@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="oc_dark">#FF1B2A3B</color>
+    <color name="oc_green">#FF00A368</color>
+    <color name="oc_green_dark">#FF1EB675</color>
+    <color name="oc_red">#FFE84525</color>
+    <color name="white">#FFFFFFFF</color>
+    <style name="Theme.OrderchampionEPOS" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
