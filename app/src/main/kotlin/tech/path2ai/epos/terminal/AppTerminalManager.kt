@@ -44,9 +44,17 @@ class AppTerminalManager(
         val txnRequest = tech.path2ai.sdk.core.TransactionRequest.sale(
             amountMinor = request.amountPence,
             currency = request.currencyCode,
+            promptForTip = request.promptForTip,
             envelope = envelope
         )
         val result = sdkManager.terminal.sale(txnRequest)
+
+        // Resolve the breakdown (SDK fills in defaults when the emulator
+        // didn't emit explicit fields — see TransactionResult.resolved* getters).
+        val base = result.resolvedBaseAmountMinor
+        val tip = result.resolvedTipAmountMinor
+        val total = result.resolvedTotalAmountMinor
+
         return when (result.state) {
             tech.path2ai.sdk.core.TransactionState.APPROVED -> {
                 // Fetch receipt data from the terminal after approval
@@ -79,12 +87,28 @@ class AppTerminalManager(
                     maskedPan = result.cardLastFour?.let { "****$it" },
                     terminalReference = result.transactionId,
                     cardReceiptData = cardReceipt,
-                    failureReason = null
+                    failureReason = null,
+                    baseAmountPence = base,
+                    tipAmountPence = tip,
+                    totalAmountPence = total,
+                    tipPercentX10 = result.tipPercentX10,
+                    customerTimedOut = false
                 )
             }
+            tech.path2ai.sdk.core.TransactionState.CUSTOMER_TIMEOUT -> TerminalSaleResponse(
+                authorised = false,
+                failureReason = result.error?.message ?: "Customer did not respond to tip prompt",
+                baseAmountPence = base,
+                tipAmountPence = 0,
+                totalAmountPence = base,
+                customerTimedOut = true
+            )
             else -> TerminalSaleResponse(
                 authorised = false,
-                failureReason = result.error?.message ?: "Transaction ${result.state.value}"
+                failureReason = result.error?.message ?: "Transaction ${result.state.value}",
+                baseAmountPence = base,
+                tipAmountPence = tip,
+                totalAmountPence = total
             )
         }
     }

@@ -114,6 +114,15 @@ fun OrderHistoryContent(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp
                                 )
+                                // Tip breakdown hint — only when the order
+                                // actually carried a tip.
+                                if (order.hasTip) {
+                                    Text(
+                                        "incl. ${order.formattedTip} tip",
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+                                }
                                 if (canShowReceipt || order.canRefund) {
                                     Spacer(Modifier.height(4.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -217,8 +226,13 @@ private fun buildHistoryReceipt(
     dateFormat: SimpleDateFormat
 ): FullReceipt {
     val itemName = if (order.orderType == OrderType.REFUND) "Card refund" else "Card payment"
-    val subtotal = (order.amountPence / 1.2).roundToInt()
-    val vatAmount = order.amountPence - subtotal
+    val total = order.amountPence
+    val tip = order.tipAmountPence ?: 0
+    // Pre-tip base. When stored, use it; otherwise derive from total - tip
+    // so VAT calculates off the pre-tip figure.
+    val base = order.baseAmountPence ?: (total - tip)
+    val subtotal = (base / 1.2).roundToInt()
+    val vatAmount = base - subtotal
     return FullReceipt(
         merchantName = "Path Café",
         merchantAddress = "1 Tech Street, London EC1A 1BB",
@@ -226,12 +240,13 @@ private fun buildHistoryReceipt(
         tillNumber = "01",
         cashierName = "Cashier",
         orderDate = dateFormat.format(Date(order.date)),
-        lineItems = listOf(ReceiptLineItem(itemName, 1, order.amountPence)),
+        lineItems = listOf(ReceiptLineItem(itemName, 1, base)),
         subtotal = subtotal,
         vatAmount = vatAmount,
-        total = order.amountPence,
+        total = total,
         currency = order.currencyCode,
-        cardReceiptBlock = cardBlock
+        cardReceiptBlock = cardBlock,
+        tipAmount = tip
     )
 }
 

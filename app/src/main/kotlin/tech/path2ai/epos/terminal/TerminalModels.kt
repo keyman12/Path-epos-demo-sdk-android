@@ -21,7 +21,14 @@ data class TerminalSaleRequest(
     val amountPence: Int,
     val currencyCode: String,
     val lineItems: List<TerminalLineItem>,
-    val operatorId: String
+    val operatorId: String,
+    /**
+     * When true, the SDK tells the terminal to show the customer-facing tip
+     * prompt before the card tap. The result's `tipAmountPence` reflects
+     * what the customer picked (or 0 if they chose "No tip").
+     * Has no effect when the emulator has tipping switched off locally.
+     */
+    val promptForTip: Boolean = false
 )
 
 data class TerminalSaleResponse(
@@ -31,7 +38,21 @@ data class TerminalSaleResponse(
     val maskedPan: String? = null,
     val terminalReference: String? = null,
     val cardReceiptData: TerminalCardReceipt? = null,
-    val failureReason: String? = null
+    val failureReason: String? = null,
+    /** Base (pre-tip) amount in minor units. Defaults to the request amount. */
+    val baseAmountPence: Int = 0,
+    /** Customer-added tip in minor units. 0 if no tip (or tipping wasn't prompted). */
+    val tipAmountPence: Int = 0,
+    /** Card-charged total in minor units (= base + tip). */
+    val totalAmountPence: Int = 0,
+    /** Preset percentage × 10 (100 = 10%, 150 = 15%, 200 = 20%); null if not a preset. */
+    val tipPercentX10: Int? = null,
+    /**
+     * True when the customer walked away from the tip prompt (result state
+     * was CUSTOMER_TIMEOUT). The UI should offer Retry / Cancel, not the
+     * usual "declined" flow.
+     */
+    val customerTimedOut: Boolean = false
 )
 
 data class TerminalRefundRequest(
@@ -106,6 +127,7 @@ data class TerminalTransactionLogEntry(
     val urn: String,
     val dateMillis: Long = System.currentTimeMillis(),
     val cardLastFour: String,
+    /** Total amount in minor units (incl. tip if any). */
     val amountMinor: Int,
     val currency: String,
     val type: TerminalTransactionType,
@@ -113,7 +135,14 @@ data class TerminalTransactionLogEntry(
     val reqId: String? = null,
     val transactionId: String? = null,
     val isCash: Boolean = false,
-    val refundedAtMillis: Long? = null
+    val refundedAtMillis: Long? = null,
+    /**
+     * Base (pre-tip) amount in minor units. Null on legacy entries written
+     * before tipping support landed — callers should fall back to amountMinor.
+     */
+    val baseAmountMinor: Int? = null,
+    /** Customer-added tip, minor units. Null or 0 = no tip. */
+    val tipAmountMinor: Int? = null
 ) {
     /** Display: "Cash" for cash transactions, else masked PAN. */
     val cardMasked: String
@@ -124,6 +153,17 @@ data class TerminalTransactionLogEntry(
 
     val formattedAmount: String
         get() = "\u00A3${"%.2f".format(amountMajor)}"
+
+    /** True when this entry has a non-zero customer tip. */
+    val hasTip: Boolean
+        get() = (tipAmountMinor ?: 0) > 0
+
+    /** Tip in major units (pounds). Zero when no tip. */
+    val tipMajor: Double
+        get() = (tipAmountMinor ?: 0) / 100.0
+
+    val formattedTip: String
+        get() = "\u00A3${"%.2f".format(tipMajor)}"
 
     fun withRefundedAt(millis: Long): TerminalTransactionLogEntry =
         copy(refundedAtMillis = millis)

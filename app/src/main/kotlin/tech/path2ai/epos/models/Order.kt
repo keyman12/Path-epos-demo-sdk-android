@@ -27,6 +27,7 @@ data class CompletedOrder(
     val orderReference: String,
     val date: Long = System.currentTimeMillis(),
     val lineItems: List<OrderLineItem>,
+    /** Total in minor units (incl. tip if any). */
     val amountPence: Int,
     val currencyCode: String = "GBP",
     val paymentMethod: PaymentMethod,
@@ -36,7 +37,14 @@ data class CompletedOrder(
     val terminalReference: String? = null,
     val authCode: String? = null,
     var status: OrderStatus = OrderStatus.COMPLETED,
-    var refundedAt: Long? = null
+    var refundedAt: Long? = null,
+    /**
+     * Base (pre-tip) amount in minor units. Null on legacy orders persisted
+     * before tipping support — callers should fall back to [amountPence].
+     */
+    val baseAmountPence: Int? = null,
+    /** Customer-added tip, minor units. Null or 0 = no tip. */
+    val tipAmountPence: Int? = null
 ) {
     val formattedAmount: String
         get() = "£%.2f".format(amountPence / 100.0)
@@ -46,4 +54,11 @@ data class CompletedOrder(
 
     val canRefund: Boolean
         get() = status == OrderStatus.COMPLETED && orderType == OrderType.SALE && terminalReference != null
+
+    /** True when this order carries a non-zero customer tip. */
+    val hasTip: Boolean
+        get() = (tipAmountPence ?: 0) > 0
+
+    val formattedTip: String
+        get() = "£%.2f".format((tipAmountPence ?: 0) / 100.0)
 }

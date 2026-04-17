@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -31,6 +32,8 @@ private enum class CardPaymentState {
     PROCESSING,
     APPROVED,
     DECLINED,
+    /** Customer walked away from the tip prompt — offer Try Again / Cancel. */
+    CUSTOMER_TIMEOUT,
     ERROR
 }
 
@@ -48,9 +51,13 @@ fun CardPaymentScreen(
     var saleResponse by remember { mutableStateOf<TerminalSaleResponse?>(null) }
     var fullReceipt by remember { mutableStateOf<FullReceipt?>(null) }
     var showReceipt by remember { mutableStateOf(false) }
+    // Bumped when the cashier hits "Try Again" after a customer timeout —
+    // keyed on LaunchedEffect so it re-runs the whole flow.
+    var attemptToken by remember { mutableStateOf(0) }
     val connectionState by terminalManager.connectionState.collectAsState()
+    val context = LocalContext.current
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(attemptToken) {
         try {
             if (connectionState !is TerminalConnectionState.Connected) {
                 state = CardPaymentState.CHECKING_TERMINAL
@@ -61,6 +68,7 @@ fun CardPaymentScreen(
             }
             state = CardPaymentState.WAITING_FOR_CARD
             state = CardPaymentState.PROCESSING
+            val promptForTip = PaymentSettings.isTippingAllowed(context)
             val request = TerminalSaleRequest(
                 orderReference = orderManager.generateReference(),
                 amountPence = total,
@@ -68,37 +76,49 @@ fun CardPaymentScreen(
                 lineItems = cartItems.map {
                     TerminalLineItem(it.product.name, it.quantity, it.product.price)
                 },
-                operatorId = "till-01"
+                operatorId = "till-01",
+                promptForTip = promptForTip
             )
             val response = terminalManager.submitSale(request)
             saleResponse = response
-            if (response.authorised) {
-                state = CardPaymentState.APPROVED
-                orderManager.recordSale(
-                    orderReference = request.orderReference,
-                    lineItems = cartItems.map { OrderLineItem(it.product.name, it.quantity, it.product.price) },
-                    amountPence = total,
-                    currencyCode = "GBP",
-                    paymentMethod = PaymentMethod.CARD,
-                    cardLastFour = response.maskedPan?.takeLast(4),
-                    cardScheme = response.cardScheme,
-                    terminalReference = response.terminalReference,
-                    authCode = response.authorisationCode
-                )
-                // Build the receipt and show it after a short delay (like iOS)
-                fullReceipt = buildReceipt(cartItems, total, request.orderReference, response)
-                delay(300)
-                showReceipt = true
-            } else {
-                errorMessage = response.failureReason ?: "Card declined"
-                state = CardPaymentState.DECLINED
-                orderManager.recordDeclinedSale(
-                    orderReference = request.orderReference,
-                    lineItems = cartItems.map { OrderLineItem(it.product.name, it.quantity, it.product.price) },
-                    amountPence = total,
-                    currencyCode = "GBP",
-                    paymentMethod = PaymentMethod.CARD
-                )
+            when {
+                response.authorised -> {
+                    state = CardPaymentState.APPROVED
+                    val tip = response.tipAmountPence
+                    val totalCharged = response.totalAmountPence.takeIf { it > 0 } ?: total
+                    orderManager.recordSale(
+                        orderReference = request.orderReference,
+                        lineItems = cartItems.map { OrderLineItem(it.product.name, it.quantity, it.product.price) },
+                        amountPence = totalCharged,
+                        currencyCode = "GBP",
+                        paymentMethod = PaymentMethod.CARD,
+                        cardLastFour = response.maskedPan?.takeLast(4),
+                        cardScheme = response.cardScheme,
+                        terminalReference = response.terminalReference,
+                        authCode = response.authorisationCode,
+                        baseAmountPence = response.baseAmountPence.takeIf { it > 0 } ?: total,
+                        tipAmountPence = tip.takeIf { it > 0 }
+                    )
+                    // Build the receipt and show it after a short delay (like iOS)
+                    fullReceipt = buildReceipt(cartItems, total, request.orderReference, response)
+                    delay(300)
+                    showReceipt = true
+                }
+                response.customerTimedOut -> {
+                    // Recoverable — don't record a declined sale; let the cashier retry.
+                    state = CardPaymentState.CUSTOMER_TIMEOUT
+                }
+                else -> {
+                    errorMessage = response.failureReason ?: "Card declined"
+                    state = CardPaymentState.DECLINED
+                    orderManager.recordDeclinedSale(
+                        orderReference = request.orderReference,
+                        lineItems = cartItems.map { OrderLineItem(it.product.name, it.quantity, it.product.price) },
+                        amountPence = total,
+                        currencyCode = "GBP",
+                        paymentMethod = PaymentMethod.CARD
+                    )
+                }
             }
         } catch (e: Exception) {
             errorMessage = e.message ?: "Terminal error"
@@ -327,6 +347,44 @@ fun CardPaymentScreen(
                                 }
                             }
 
+                            CardPaymentState.CUSTOMER_TIMEOUT -> {
+                                Icon(
+                                    Icons.Default.HourglassEmpty,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(72.dp),
+                                    tint = Color(0xFFFF9800)
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "Customer Didn't Respond",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "The customer didn't pick a tip option in time. " +
+                                        "You can try the sale again or cancel and return to the cart.",
+                                    fontSize = 13.sp,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(Modifier.height(20.dp))
+                                Button(
+                                    onClick = { attemptToken += 1 },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = OCGreen)
+                                ) {
+                                    Text("Try Again", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Cancel", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                                }
+                            }
+
                             CardPaymentState.ERROR -> {
                                 Icon(
                                     Icons.Default.Warning,
@@ -372,9 +430,18 @@ private fun buildReceipt(
     orderRef: String,
     response: TerminalSaleResponse
 ): FullReceipt {
-    // Assume prices are VAT-inclusive at 20%; calculate components
-    val subtotal = (total / 1.2).roundToInt()
-    val vatAmount = total - subtotal
+    // Use the breakdown from the terminal when present; fall back to the
+    // cart total. Base amount drives the VAT calculation (tip sits on top
+    // and is not VATable). Total drives the bottom-line figure so the
+    // receipt matches what was actually charged to the card.
+    val baseFromTerminal = response.baseAmountPence.takeIf { it > 0 }
+    val totalFromTerminal = response.totalAmountPence.takeIf { it > 0 } ?: total
+    val tip = response.tipAmountPence
+
+    val cartBase = baseFromTerminal ?: total
+    val subtotal = (cartBase / 1.2).roundToInt()
+    val vatAmount = cartBase - subtotal
+
     val dateFormat = SimpleDateFormat("dd MMM yyyy HH:mm", Locale.UK)
 
     return FullReceipt(
@@ -389,8 +456,9 @@ private fun buildReceipt(
         },
         subtotal = subtotal,
         vatAmount = vatAmount,
-        total = total,
+        total = totalFromTerminal,
         currency = "GBP",
-        cardReceiptBlock = response.cardReceiptData?.let { CardReceiptBlock.from(it) }
+        cardReceiptBlock = response.cardReceiptData?.let { CardReceiptBlock.from(it) },
+        tipAmount = tip
     )
 }

@@ -511,6 +511,11 @@ fun ReceiptContent(
 
         ReceiptAmountRow("Subtotal", receipt.subtotal, bold = false)
         ReceiptAmountRow("VAT (20%)", receipt.vatAmount, bold = false)
+        // Tip row only renders when the customer actually added a tip — keeps
+        // the receipt tidy on cash / tipping-off sales.
+        if (receipt.tipAmount > 0) {
+            ReceiptAmountRow("Tip", receipt.tipAmount, bold = false)
+        }
         ReceiptAmountRow("TOTAL", receipt.total, bold = true, color = OCGreen)
 
         receipt.cardReceiptBlock?.let { card ->

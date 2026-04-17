@@ -19,9 +19,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import android.content.Context
 import android.content.pm.PackageManager
 import tech.path2ai.epos.terminal.TerminalConnectionState
 import tech.path2ai.epos.terminal.AppTerminalManager
+import tech.path2ai.epos.terminal.PaymentSettings
 import tech.path2ai.epos.ui.theme.OCGreen
 
 /**
@@ -191,6 +193,39 @@ fun TerminalSettingsContent(
                 Icon(Icons.Default.LinkOff, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Disconnect")
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── Payment Options ─────────────────────────────────────────────
+        Text("Payment Options", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        var allowTipping by remember {
+            mutableStateOf(PaymentSettings.isTippingAllowed(context))
+        }
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Allow tipping", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Asks the customer to pick a tip (10% / 15% / 20% / No tip) " +
+                                "before the card tap.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                    Switch(
+                        checked = allowTipping,
+                        onCheckedChange = {
+                            allowTipping = it
+                            PaymentSettings.setTippingAllowed(context, it)
+                        }
+                    )
+                }
             }
         }
 

@@ -27,7 +27,9 @@ class OrderManager(private val context: Context) {
         cardLastFour: String? = null,
         cardScheme: String? = null,
         terminalReference: String? = null,
-        authCode: String? = null
+        authCode: String? = null,
+        baseAmountPence: Int? = null,
+        tipAmountPence: Int? = null
     ) {
         val order = CompletedOrder(
             orderReference = orderReference,
@@ -39,7 +41,9 @@ class OrderManager(private val context: Context) {
             cardScheme = cardScheme,
             terminalReference = terminalReference,
             authCode = authCode,
-            status = OrderStatus.COMPLETED
+            status = OrderStatus.COMPLETED,
+            baseAmountPence = baseAmountPence,
+            tipAmountPence = tipAmountPence
         )
         _orders.value = listOf(order) + _orders.value
         saveOrders()

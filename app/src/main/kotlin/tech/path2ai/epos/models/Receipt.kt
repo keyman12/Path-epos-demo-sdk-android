@@ -53,5 +53,10 @@ data class FullReceipt(
     val total: Int,
     val currency: String = "GBP",
     val cardReceiptBlock: CardReceiptBlock? = null,
-    val footerLines: List<String> = listOf("Thank you for visiting!", "path2ai.tech")
+    val footerLines: List<String> = listOf("Thank you for visiting!", "path2ai.tech"),
+    /**
+     * Customer-added tip in minor units (pence). Zero when no tip.
+     * When > 0 the receipt renders an extra "Tip" row between Subtotal and Total.
+     */
+    val tipAmount: Int = 0
 )
