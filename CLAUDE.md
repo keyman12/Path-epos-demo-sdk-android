@@ -33,8 +33,16 @@ Depends on **`path-terminal-sdk-android`** via a **Gradle composite build** poin
 implementation("tech.path2ai.sdk:path-core-models")
 implementation("tech.path2ai.sdk:path-terminal-sdk")
 implementation("tech.path2ai.sdk:path-emulator-adapter")
+implementation("tech.path2ai.sdk:path-psdk-adapter")   // Verifone backend
 implementation("tech.path2ai.sdk:path-diagnostics")
 ```
+
+The Verifone backend (`path-psdk-adapter`) pulls the Verifone PSDK aar from the SDK repo's
+committed Maven repo — the demo's `settings.gradle.kts` registers
+`../path-terminal-sdk-android/third-party/verifone/m2` and JitPack for it, the app enables
+`dataBinding` (the aar needs it), and the manifest uses `tools:replace` for the aar's
+theme/allowBackup. The backend is switched at runtime in Settings → Terminal Backend
+(Emulator BLE / Emulator Wi-Fi / Verifone) via `TerminalBackendSettings` + `applyBackend()`.
 
 ### Setup requirements
 

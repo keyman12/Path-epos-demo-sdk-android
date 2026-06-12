@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -8,13 +9,16 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
+    <!-- tools:replace — the Verifone PSDK aar's manifest sets its own
+         allowBackup/theme; ours win on merge (same fix as the PSDK harness). -->
     <application
         android:name=".EPOSApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="Path EPOS Demo"
         android:supportsRtl="true"
-        android:theme="@style/Theme.OrderchampionEPOS">
+        android:theme="@style/Theme.OrderchampionEPOS"
+        tools:replace="android:allowBackup,android:theme">
         <activity
             android:name=".MainActivity"
             android:exported="true">

@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import android.content.Context
 import android.content.pm.PackageManager
+import tech.path2ai.epos.terminal.TerminalBackend
+import tech.path2ai.epos.terminal.TerminalBackendSettings
 import tech.path2ai.epos.terminal.TerminalConnectionState
 import tech.path2ai.epos.terminal.AppTerminalManager
 import tech.path2ai.epos.terminal.PaymentSettings
@@ -54,7 +56,93 @@ fun TerminalSettingsContent(
         blePermissionGranted = permissions.values.all { it }
     }
 
+    var backend by remember { mutableStateOf(TerminalBackendSettings.backend(context)) }
+    var emulatorHost by remember { mutableStateOf(TerminalBackendSettings.emulatorHost(context)) }
+    var verifoneHost by remember { mutableStateOf(TerminalBackendSettings.verifoneHost(context)) }
+    var refundPassword by remember { mutableStateOf(TerminalBackendSettings.refundPassword(context)) }
+    val needsBle = backend == TerminalBackend.EMULATOR_BLE
+
     Column(modifier = modifier.padding(16.dp)) {
+        // ── Terminal backend (the switch) ───────────────────────────────
+        Text("Terminal Backend", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(8.dp))
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            val entries = listOf(
+                TerminalBackend.EMULATOR_BLE to "Emulator (BLE)",
+                TerminalBackend.EMULATOR_WIFI to "Emulator (Wi-Fi)",
+                TerminalBackend.VERIFONE to "Verifone"
+            )
+            entries.forEachIndexed { index, (value, label) ->
+                SegmentedButton(
+                    selected = backend == value,
+                    onClick = {
+                        if (backend != value) {
+                            backend = value
+                            TerminalBackendSettings.setBackend(context, value)
+                            terminalManager.applyBackend()
+                        }
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = entries.size)
+                ) { Text(label, style = MaterialTheme.typography.labelSmall) }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        if (backend == TerminalBackend.EMULATOR_WIFI) {
+            OutlinedTextField(
+                value = emulatorHost,
+                onValueChange = {
+                    emulatorHost = it
+                    TerminalBackendSettings.setEmulatorHost(context, it)
+                },
+                label = { Text("Emulator IP (shown on its welcome screen)") },
+                placeholder = { Text("192.168.1.xx") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                "Put the emulator in Wi-Fi mode first: Config → Connection on the device. Port 9700.",
+                style = MaterialTheme.typography.bodySmall, color = Color.Gray
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { terminalManager.applyBackend() }, modifier = Modifier.fillMaxWidth()) {
+                Text("Apply host")
+            }
+        }
+        if (backend == TerminalBackend.VERIFONE) {
+            OutlinedTextField(
+                value = verifoneHost,
+                onValueChange = {
+                    verifoneHost = it
+                    TerminalBackendSettings.setVerifoneHost(context, it)
+                },
+                label = { Text("Terminal IP") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = refundPassword,
+                onValueChange = {
+                    refundPassword = it
+                    TerminalBackendSettings.setRefundPassword(context, it)
+                },
+                label = { Text("Refund password (blank on test estates)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                "Only ONE client can be connected to the terminal at a time — disconnect any harness first.",
+                style = MaterialTheme.typography.bodySmall, color = Color.Gray
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = { terminalManager.applyBackend() }, modifier = Modifier.fillMaxWidth()) {
+                Text("Apply settings")
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
         // Status card
         Card(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -119,7 +207,7 @@ fun TerminalSettingsContent(
 
         Spacer(Modifier.height(16.dp))
 
-        if (!blePermissionGranted) {
+        if (needsBle && !blePermissionGranted) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Bluetooth Permission Required", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
@@ -138,17 +226,24 @@ fun TerminalSettingsContent(
             Spacer(Modifier.height(16.dp))
         }
 
-        Text("Path POS Emulator", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(
+            when (backend) {
+                TerminalBackend.EMULATOR_BLE -> "Path POS Emulator"
+                TerminalBackend.EMULATOR_WIFI -> "Path POS Emulator (Wi-Fi)"
+                TerminalBackend.VERIFONE -> "Verifone Terminal"
+            },
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary
+        )
         Spacer(Modifier.height(8.dp))
 
         OutlinedButton(
             onClick = { terminalManager.startScan() },
             modifier = Modifier.fillMaxWidth(),
-            enabled = blePermissionGranted && !isScanning && connectionState !is TerminalConnectionState.Connected
+            enabled = (!needsBle || blePermissionGranted) && !isScanning && connectionState !is TerminalConnectionState.Connected
         ) {
             Icon(Icons.Default.Sensors, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Scan for Terminals")
+            Text(if (needsBle) "Scan for Terminals" else "Find Terminal")
             if (isScanning) {
                 Spacer(Modifier.width(8.dp))
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -176,7 +271,14 @@ fun TerminalSettingsContent(
             }
         } else if (!isScanning && connectionState !is TerminalConnectionState.Connected) {
             Text(
-                "No terminals found. Ensure the Path POS Emulator is powered on and within Bluetooth range.",
+                when (backend) {
+                    TerminalBackend.EMULATOR_BLE ->
+                        "No terminals found. Ensure the Path POS Emulator is powered on and within Bluetooth range."
+                    TerminalBackend.EMULATOR_WIFI ->
+                        "Tap \"Find Terminal\" — the emulator must be in Wi-Fi mode on the same network."
+                    TerminalBackend.VERIFONE ->
+                        "Tap \"Find Terminal\", then Connect — the terminal must be idle on the same network."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Gray,
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -234,7 +336,16 @@ fun TerminalSettingsContent(
         Text("About", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         ListItem(
             headlineContent = { Text("Transport") },
-            trailingContent = { Text("Bluetooth Low Energy", style = MaterialTheme.typography.bodySmall, color = Color.Gray) }
+            trailingContent = {
+                Text(
+                    when (backend) {
+                        TerminalBackend.EMULATOR_BLE -> "Bluetooth Low Energy"
+                        TerminalBackend.EMULATOR_WIFI -> "TCP/IP (emulator Wi-Fi mode)"
+                        TerminalBackend.VERIFONE -> "TCP/IP (Verifone PSDK)"
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = Color.Gray
+                )
+            }
         )
         ListItem(
             headlineContent = { Text("Adapter") },

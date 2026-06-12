@@ -35,6 +35,9 @@ android {
 
     buildFeatures {
         compose = true
+        // The Verifone PSDK aar was built with data binding — the consuming
+        // APP must enable it or its generated classes fail to resolve.
+        dataBinding = true
     }
 }
 
@@ -43,6 +46,7 @@ dependencies {
     implementation("tech.path2ai.sdk:path-core-models")
     implementation("tech.path2ai.sdk:path-terminal-sdk")
     implementation("tech.path2ai.sdk:path-emulator-adapter")
+    implementation("tech.path2ai.sdk:path-psdk-adapter")
     implementation("tech.path2ai.sdk:path-diagnostics")
 
     // Jetpack Compose

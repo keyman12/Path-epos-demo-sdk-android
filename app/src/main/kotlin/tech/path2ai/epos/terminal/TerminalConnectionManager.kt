@@ -35,6 +35,13 @@ interface TerminalConnectionManager {
     fun disconnect()
     fun stop()
 
+    /**
+     * Re-read [TerminalBackendSettings] and rebuild the adapter + PathTerminal
+     * for the selected backend (emulator BLE / emulator Wi-Fi / Verifone).
+     * Disconnects the old backend first.
+     */
+    fun applyBackend()
+
     // ---- Payments ----
 
     fun startSale(amountMinor: Int, currency: String, tipMinor: Int? = null)

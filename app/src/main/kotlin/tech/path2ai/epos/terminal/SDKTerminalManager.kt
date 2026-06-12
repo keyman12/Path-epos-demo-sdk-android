@@ -12,6 +12,9 @@ import tech.path2ai.sdk.PathTerminalEvent
 import tech.path2ai.sdk.ConnectionState
 import tech.path2ai.sdk.core.*
 import tech.path2ai.sdk.emulator.BLEPathTerminalAdapter
+import tech.path2ai.sdk.emulator.TcpPathTerminalAdapter
+import tech.path2ai.sdk.psdk.VerifonePSDKAdapter
+import tech.path2ai.sdk.psdk.VerifoneTerminalConfig
 import tech.path2ai.sdk.diagnostics.PathDiagnostics
 import java.text.SimpleDateFormat
 import java.util.*
@@ -34,14 +37,58 @@ class SDKTerminalManager(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val adapter = BLEPathTerminalAdapter(
-        context = context,
-        sdkVersion = "0.1.1",
-        adapterVersion = "0.1.1",
-        deviceNameFilter = null,
-        onLog = { msg -> scope.launch { log(msg) } }
-    )
-    internal val terminal = PathTerminal(adapter = adapter)
+    // The backend switch: the adapter is chosen from TerminalBackendSettings
+    // and can be swapped at runtime via applyBackend() — everything above
+    // PathTerminal is backend-agnostic.
+    private var backend: TerminalBackend = TerminalBackendSettings.backend(context)
+    private var adapter: PathTerminalAdapter = buildAdapter(backend)
+    internal var terminal = PathTerminal(adapter = adapter)
+        private set
+    private var eventCollectionJob: Job? = null
+
+    private fun buildAdapter(backend: TerminalBackend): PathTerminalAdapter = when (backend) {
+        TerminalBackend.EMULATOR_BLE -> BLEPathTerminalAdapter(
+            context = context,
+            sdkVersion = "0.1.1",
+            adapterVersion = "0.1.1",
+            deviceNameFilter = null,
+            onLog = { msg -> scope.launch { log(msg) } }
+        )
+        TerminalBackend.EMULATOR_WIFI -> TcpPathTerminalAdapter(
+            host = TerminalBackendSettings.emulatorHost(context),
+            onLog = { msg -> scope.launch { log(msg) } }
+        )
+        TerminalBackend.VERIFONE -> VerifonePSDKAdapter(
+            context = context,
+            config = VerifoneTerminalConfig(
+                host = TerminalBackendSettings.verifoneHost(context),
+                refundPassword = TerminalBackendSettings.refundPassword(context)
+            ),
+            onLog = { msg -> scope.launch { log(msg) } }
+        )
+    }
+
+    override fun applyBackend() {
+        val newBackend = TerminalBackendSettings.backend(context)
+        log("Switching terminal backend: ${backend.name} -> ${newBackend.name}")
+        // Cleanly drop the old backend first (one client at a time on real terminals).
+        currentSaleJob?.cancel(); currentRefundJob?.cancel(); currentVoidJob?.cancel()
+        timeoutCheckJob?.cancel()
+        eventCollectionJob?.cancel()
+        val old = terminal
+        scope.launch {
+            try { old.disconnect() } catch (_: Exception) { }
+        }
+        backend = newBackend
+        adapter = buildAdapter(newBackend)
+        terminal = PathTerminal(adapter = adapter)
+        _discoveredDevices.value = emptyList()
+        _connectionState.value = TerminalConnectionState.Disconnected
+        isReady = false
+        startEventCollection()
+        updateBluetoothState()
+        log("Backend ready: ${integrationKind}")
+    }
 
     private var currentSaleJob: Job? = null
     private var currentRefundJob: Job? = null
@@ -89,7 +136,12 @@ class SDKTerminalManager(
 
     override val sdkVersion: String? = "0.1.1"
     override val protocolVersion: String? = "0.1"
-    override val integrationKind: String = "path_sdk"
+    override val integrationKind: String
+        get() = when (backend) {
+            TerminalBackend.EMULATOR_BLE -> "path_sdk_emulator_ble"
+            TerminalBackend.EMULATOR_WIFI -> "path_sdk_emulator_wifi"
+            TerminalBackend.VERIFONE -> "path_sdk_verifone"
+        }
 
     private var _lastWireRequestId: String? = null
     override val lastWireRequestId: String? get() = _lastWireRequestId
@@ -111,7 +163,8 @@ class SDKTerminalManager(
     // ---- Event collection ----
 
     private fun startEventCollection() {
-        scope.launch {
+        eventCollectionJob?.cancel()
+        eventCollectionJob = scope.launch {
             terminal.events.collect { event ->
                 when (event) {
                     is PathTerminalEvent.ConnectionStateChanged -> {
@@ -195,6 +248,18 @@ class SDKTerminalManager(
         val btAdapter = BluetoothAdapter.getDefaultAdapter()
         val enabled = btAdapter?.isEnabled ?: false
         _isBluetoothPoweredOn.value = enabled
+        // Bluetooth only matters on the BLE backend — TCP backends (emulator
+        // Wi-Fi mode, Verifone) work with Bluetooth off entirely.
+        if (backend != TerminalBackend.EMULATOR_BLE) {
+            if (_connectionState.value is TerminalConnectionState.Unavailable) {
+                _connectionState.value = if (terminal.isConnected) {
+                    TerminalConnectionState.Connected
+                } else {
+                    TerminalConnectionState.Disconnected
+                }
+            }
+            return
+        }
         if (!enabled) {
             _connectionState.value = TerminalConnectionState.Unavailable("Bluetooth unavailable")
             isReady = false
