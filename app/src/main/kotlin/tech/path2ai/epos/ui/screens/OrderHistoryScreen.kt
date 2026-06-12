@@ -37,6 +37,7 @@ fun OrderHistoryContent(
 ) {
     val orders by orderManager.orders.collectAsState()
     var refundOrder by remember { mutableStateOf<CompletedOrder?>(null) }
+    var voidOrder by remember { mutableStateOf<CompletedOrder?>(null) }
     var receiptToShow by remember { mutableStateOf<FullReceipt?>(null) }
     var loadingReceiptForId by remember { mutableStateOf<String?>(null) }
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy HH:mm", Locale.UK) }
@@ -48,6 +49,15 @@ fun OrderHistoryContent(
             terminalManager = terminalManager,
             orderManager = orderManager,
             onDismiss = { refundOrder = null }
+        )
+    }
+
+    voidOrder?.let { order ->
+        VoidPaymentScreen(
+            order = order,
+            terminalManager = terminalManager,
+            orderManager = orderManager,
+            onDismiss = { voidOrder = null }
         )
     }
 
@@ -123,7 +133,7 @@ fun OrderHistoryContent(
                                         color = Color.Gray
                                     )
                                 }
-                                if (canShowReceipt || order.canRefund) {
+                                if (canShowReceipt || order.canRefund || order.canVoid) {
                                     Spacer(Modifier.height(4.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 
@@ -206,6 +216,26 @@ fun OrderHistoryContent(
                                                 )
                                                 Spacer(Modifier.width(4.dp))
                                                 Text("Refund", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                        }
+
+                                        // Void button (full reversal — completed sales only)
+                                        if (order.canVoid) {
+                                            val voidAmber = Color(0xFFD97706)
+                                            OutlinedButton(
+                                                onClick = { voidOrder = order },
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                                modifier = Modifier.height(32.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = voidAmber),
+                                                border = BorderStroke(1.dp, voidAmber)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Block,
+                                                    contentDescription = "Void",
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Void", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                             }
                                         }
                                     }
@@ -291,9 +321,11 @@ fun OrderHistoryScreen(
 private fun StatusBadge(status: OrderStatus, orderType: OrderType) {
     val (text, color) = when {
         orderType == OrderType.REFUND -> "REFUND" to Color(0xFF9C27B0)
+        orderType == OrderType.VOID -> "VOID" to Color(0xFFD97706)
         status == OrderStatus.COMPLETED -> "COMPLETED" to OCGreen
         status == OrderStatus.DECLINED -> "DECLINED" to OCRed
         status == OrderStatus.REFUNDED -> "REFUNDED" to Color(0xFFFF9800)
+        status == OrderStatus.VOIDED -> "VOIDED" to Color(0xFF6B7280)
         else -> "" to Color.Gray
     }
     if (text.isNotEmpty()) {

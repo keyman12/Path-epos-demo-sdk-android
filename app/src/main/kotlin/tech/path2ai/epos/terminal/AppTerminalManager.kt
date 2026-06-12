@@ -138,6 +138,30 @@ class AppTerminalManager(
         }
     }
 
+    /** Bridge: calls the Path SDK directly for a void (full reversal). */
+    suspend fun submitVoid(request: TerminalVoidRequest): TerminalVoidResponse {
+        val envelope = tech.path2ai.sdk.core.RequestEnvelope.create(
+            merchantReference = request.orderReference,
+            sdkVersion = "0.1.0",
+            adapterVersion = "0.1.0"
+        )
+        val txnRequest = tech.path2ai.sdk.core.TransactionRequest.voidTransaction(
+            originalTransactionId = request.originalTerminalReference,
+            envelope = envelope
+        )
+        val result = sdkManager.terminal.voidTransaction(txnRequest)
+        return when (result.state) {
+            tech.path2ai.sdk.core.TransactionState.REVERSED -> TerminalVoidResponse(
+                succeeded = true,
+                voidReference = result.transactionId
+            )
+            else -> TerminalVoidResponse(
+                succeeded = false,
+                failureReason = result.error?.message ?: "Void ${result.state.value}"
+            )
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         // ViewModel is being destroyed; disconnect cleanly

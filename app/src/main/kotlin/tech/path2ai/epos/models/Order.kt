@@ -7,10 +7,10 @@ import kotlinx.serialization.Serializable
 enum class PaymentMethod { @SerialName("cash") CASH, @SerialName("card") CARD }
 
 @Serializable
-enum class OrderStatus { @SerialName("completed") COMPLETED, @SerialName("declined") DECLINED, @SerialName("refunded") REFUNDED }
+enum class OrderStatus { @SerialName("completed") COMPLETED, @SerialName("declined") DECLINED, @SerialName("refunded") REFUNDED, @SerialName("voided") VOIDED }
 
 @Serializable
-enum class OrderType { @SerialName("sale") SALE, @SerialName("refund") REFUND }
+enum class OrderType { @SerialName("sale") SALE, @SerialName("refund") REFUND, @SerialName("void") VOID }
 
 @Serializable
 data class OrderLineItem(
@@ -38,6 +38,7 @@ data class CompletedOrder(
     val authCode: String? = null,
     var status: OrderStatus = OrderStatus.COMPLETED,
     var refundedAt: Long? = null,
+    var voidedAt: Long? = null,
     /**
      * Base (pre-tip) amount in minor units. Null on legacy orders persisted
      * before tipping support — callers should fall back to [amountPence].
@@ -53,6 +54,14 @@ data class CompletedOrder(
         get() = if (cardScheme != null && cardLastFour != null) "$cardScheme ****$cardLastFour" else null
 
     val canRefund: Boolean
+        get() = status == OrderStatus.COMPLETED && orderType == OrderType.SALE && terminalReference != null
+
+    /**
+     * Void = full reversal of an approved sale (no amount, no card tap).
+     * Same gate as [canRefund] — a completed card sale with a terminal
+     * reference to link to.
+     */
+    val canVoid: Boolean
         get() = status == OrderStatus.COMPLETED && orderType == OrderType.SALE && terminalReference != null
 
     /** True when this order carries a non-zero customer tip. */

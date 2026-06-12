@@ -76,6 +76,29 @@ class OrderManager(private val context: Context) {
         saveOrders()
     }
 
+    fun markVoided(orderId: String) {
+        _orders.value = _orders.value.map {
+            if (it.id == orderId) it.copy(status = OrderStatus.VOIDED, voidedAt = System.currentTimeMillis())
+            else it
+        }
+        saveOrders()
+    }
+
+    fun recordVoid(originalOrder: CompletedOrder, voidReference: String?) {
+        val void = CompletedOrder(
+            orderReference = generateReference(),
+            lineItems = originalOrder.lineItems,
+            amountPence = originalOrder.amountPence,
+            currencyCode = originalOrder.currencyCode,
+            paymentMethod = originalOrder.paymentMethod,
+            orderType = OrderType.VOID,
+            terminalReference = voidReference,
+            status = OrderStatus.COMPLETED
+        )
+        _orders.value = listOf(void) + _orders.value
+        saveOrders()
+    }
+
     fun recordRefund(originalOrder: CompletedOrder, refundReference: String?) {
         val refund = CompletedOrder(
             orderReference = generateReference(),

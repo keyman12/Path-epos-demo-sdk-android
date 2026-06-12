@@ -68,6 +68,21 @@ data class TerminalRefundResponse(
     val failureReason: String? = null
 )
 
+/**
+ * Void = full reversal of an approved sale. No amount (the terminal reverses
+ * the original in full) and no card presentation — it completes immediately.
+ */
+data class TerminalVoidRequest(
+    val originalTerminalReference: String,
+    val orderReference: String
+)
+
+data class TerminalVoidResponse(
+    val succeeded: Boolean,
+    val voidReference: String? = null,
+    val failureReason: String? = null
+)
+
 data class TerminalTransactionStatus(
     val reference: String,
     val state: String,
@@ -111,7 +126,8 @@ sealed class TerminalAdapterError(message: String) : Exception(message) {
 @Serializable
 enum class TerminalTransactionType {
     SALE,
-    REFUND
+    REFUND,
+    VOID
 }
 
 @Serializable
@@ -136,6 +152,7 @@ data class TerminalTransactionLogEntry(
     val transactionId: String? = null,
     val isCash: Boolean = false,
     val refundedAtMillis: Long? = null,
+    val voidedAtMillis: Long? = null,
     /**
      * Base (pre-tip) amount in minor units. Null on legacy entries written
      * before tipping support landed — callers should fall back to amountMinor.
@@ -167,6 +184,9 @@ data class TerminalTransactionLogEntry(
 
     fun withRefundedAt(millis: Long): TerminalTransactionLogEntry =
         copy(refundedAtMillis = millis)
+
+    fun withVoidedAt(millis: Long): TerminalTransactionLogEntry =
+        copy(voidedAtMillis = millis)
 }
 
 /** Redacted support bundle for diagnostics (no PAN or full card numbers). */

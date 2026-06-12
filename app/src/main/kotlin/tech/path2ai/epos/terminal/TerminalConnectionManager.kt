@@ -46,6 +46,12 @@ interface TerminalConnectionManager {
         originalEntryId: String? = null
     )
 
+    /** Void (full reversal) of an approved sale — no amount, no card tap. */
+    fun startVoid(
+        originalTransactionId: String,
+        originalEntryId: String? = null
+    )
+
     // ---- Cancel / Continue ----
 
     fun cancelCurrentOperation()

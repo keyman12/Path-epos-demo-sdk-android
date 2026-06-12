@@ -45,7 +45,9 @@ class SDKTerminalManager(
 
     private var currentSaleJob: Job? = null
     private var currentRefundJob: Job? = null
+    private var currentVoidJob: Job? = null
     private var pendingRefundOriginalEntryId: String? = null
+    private var pendingVoidOriginalEntryId: String? = null
     private var lastAckTime: Long? = null
     private var timeoutCheckJob: Job? = null
 
@@ -342,8 +344,10 @@ class SDKTerminalManager(
     override fun stop() {
         currentSaleJob?.cancel()
         currentRefundJob?.cancel()
+        currentVoidJob?.cancel()
         currentSaleJob = null
         currentRefundJob = null
+        currentVoidJob = null
         _showTimeoutPrompt.value = false
         _lastWireRequestId = null
         timeoutCheckJob?.cancel()
@@ -446,9 +450,46 @@ class SDKTerminalManager(
         }
     }
 
+    override fun startVoid(
+        originalTransactionId: String,
+        originalEntryId: String?
+    ) {
+        clearForNewTransaction()
+        if (!isReady) {
+            log("Not connected. Connect to terminal first.")
+            return
+        }
+        pendingVoidOriginalEntryId = originalEntryId
+        val envelope = RequestEnvelope.create(sdkVersion = "0.1.1", adapterVersion = "0.1.1")
+        _lastWireRequestId = envelope.requestId
+        val request = TransactionRequest.voidTransaction(
+            originalTransactionId = originalTransactionId,
+            envelope = envelope
+        )
+        log("Sending Void request...")
+        lastAckTime = System.currentTimeMillis()
+
+        currentVoidJob = scope.launch {
+            try {
+                val result = terminal.voidTransaction(request)
+                applyResult(result, "Void")
+            } catch (e: PathError) {
+                _lastError.value = e.message
+                _lastResult.value = errorResultMap(e.message ?: "Void error", "Void", 0, "GBP")
+                val recov = if (e.recoverable) " [recoverable]" else ""
+                log("Void error$recov [${e.code}]: ${e.message}")
+            } catch (e: Exception) {
+                _lastError.value = e.message
+                _lastResult.value = errorResultMap(e.message ?: "Void failed", "Void", 0, "GBP")
+                log("Void failed: ${e.message}")
+            }
+        }
+    }
+
     private fun applyResult(result: TransactionResult, cmd: String) {
         val statusStr = when (result.state) {
             TransactionState.APPROVED, TransactionState.REFUNDED -> "approved"
+            TransactionState.REVERSED -> "reversed"
             TransactionState.DECLINED -> "declined"
             TransactionState.TIMED_OUT -> "timed_out"
             TransactionState.FAILED -> "failed"
@@ -470,7 +511,8 @@ class SDKTerminalManager(
         }
 
         val txnStatus = when (result.state) {
-            TransactionState.APPROVED, TransactionState.REFUNDED -> TerminalTransactionLogStatus.SUCCESS
+            TransactionState.APPROVED, TransactionState.REFUNDED, TransactionState.REVERSED ->
+                TerminalTransactionLogStatus.SUCCESS
             TransactionState.TIMED_OUT -> TerminalTransactionLogStatus.TIMED_OUT
             else -> TerminalTransactionLogStatus.DECLINE
         }
@@ -479,7 +521,11 @@ class SDKTerminalManager(
             cardLastFour = result.cardLastFour ?: "0000",
             amountMinor = result.amountMinor,
             currency = result.currency,
-            type = if (cmd == "Refund") TerminalTransactionType.REFUND else TerminalTransactionType.SALE,
+            type = when (cmd) {
+                "Refund" -> TerminalTransactionType.REFUND
+                "Void" -> TerminalTransactionType.VOID
+                else -> TerminalTransactionType.SALE
+            },
             status = txnStatus,
             reqId = result.requestId,
             transactionId = result.transactionId,
@@ -495,6 +541,16 @@ class SDKTerminalManager(
                 log[origIdx] = log[origIdx].withRefundedAt(System.currentTimeMillis())
             }
             pendingRefundOriginalEntryId = null
+        }
+        // Mark original sale as voided if this was a successful void
+        if (cmd == "Void" && pendingVoidOriginalEntryId != null) {
+            if (result.state == TransactionState.REVERSED) {
+                val origIdx = log.indexOfFirst { it.id == pendingVoidOriginalEntryId }
+                if (origIdx >= 0) {
+                    log[origIdx] = log[origIdx].withVoidedAt(System.currentTimeMillis())
+                }
+            }
+            pendingVoidOriginalEntryId = null
         }
         _transactionLog.value = log
         saveTransactionLog()
