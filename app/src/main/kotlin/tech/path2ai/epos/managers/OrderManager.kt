@@ -99,11 +99,15 @@ class OrderManager(private val context: Context) {
         saveOrders()
     }
 
-    fun recordRefund(originalOrder: CompletedOrder, refundReference: String?) {
+    fun recordRefund(
+        originalOrder: CompletedOrder,
+        refundReference: String?,
+        refundedAmountPence: Int? = null
+    ) {
         val refund = CompletedOrder(
             orderReference = generateReference(),
             lineItems = originalOrder.lineItems,
-            amountPence = originalOrder.amountPence,
+            amountPence = refundedAmountPence ?: originalOrder.amountPence,
             currencyCode = originalOrder.currencyCode,
             paymentMethod = originalOrder.paymentMethod,
             orderType = OrderType.REFUND,

@@ -57,6 +57,18 @@ fun CardPaymentScreen(
     val connectionState by terminalManager.connectionState.collectAsState()
     val context = LocalContext.current
 
+    // Closing the dialog mid-sale must tell the terminal to cancel — otherwise
+    // the emulator/terminal sits waiting for the card until its own timeout.
+    val cancelAndDismiss = {
+        if (state == CardPaymentState.CHECKING_TERMINAL ||
+            state == CardPaymentState.WAITING_FOR_CARD ||
+            state == CardPaymentState.PROCESSING
+        ) {
+            terminalManager.cancelCurrentOperation()
+        }
+        onDismiss()
+    }
+
     LaunchedEffect(attemptToken) {
         try {
             if (connectionState !is TerminalConnectionState.Connected) {
@@ -170,7 +182,7 @@ fun CardPaymentScreen(
                     )
                     // Show X cancel only while in progress
                     if (state != CardPaymentState.APPROVED) {
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = cancelAndDismiss) {
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = "Cancel",

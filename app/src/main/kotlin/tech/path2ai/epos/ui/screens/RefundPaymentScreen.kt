@@ -1,6 +1,7 @@
 package tech.path2ai.epos.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -10,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,7 +23,7 @@ import tech.path2ai.epos.models.CompletedOrder
 import tech.path2ai.epos.terminal.*
 import tech.path2ai.epos.ui.theme.OCGreen
 
-private enum class RefundState { CONNECTING, PROCESSING, APPROVED, FAILED, ERROR }
+private enum class RefundState { AMOUNT_ENTRY, CONNECTING, PROCESSING, APPROVED, FAILED, ERROR }
 
 // Refund accent colour — purple, distinct from green (sale) and red (error)
 private val RefundColor = Color(0xFF7C3AED)
@@ -33,12 +35,20 @@ fun RefundPaymentScreen(
     orderManager: OrderManager,
     onDismiss: () -> Unit
 ) {
-    var state by remember { mutableStateOf(RefundState.CONNECTING) }
+    // Start on the amount-entry step so the cashier can do a partial refund.
+    var state by remember { mutableStateOf(RefundState.AMOUNT_ENTRY) }
     var errorMessage by remember { mutableStateOf("") }
     var refundRef by remember { mutableStateOf<String?>(null) }
+    // Editable refund amount (pounds), defaulting to the full original total.
+    var amountText by remember { mutableStateOf("%.2f".format(order.amountPence / 100.0)) }
+    var amountError by remember { mutableStateOf<String?>(null) }
+    var refundPence by remember { mutableStateOf(order.amountPence) }
+    // Bumped when the cashier confirms the amount — keys the LaunchedEffect.
+    var startToken by remember { mutableStateOf(0) }
     val connectionState by terminalManager.connectionState.collectAsState()
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(startToken) {
+        if (startToken == 0) return@LaunchedEffect  // still on the amount-entry step
         try {
             if (connectionState !is TerminalConnectionState.Connected) {
                 state = RefundState.CONNECTING
@@ -56,7 +66,7 @@ fun RefundPaymentScreen(
             state = RefundState.PROCESSING
             val request = TerminalRefundRequest(
                 originalTerminalReference = termRef,
-                amountPence = order.amountPence,
+                amountPence = refundPence,
                 currencyCode = order.currencyCode,
                 orderReference = orderManager.generateReference()
             )
@@ -64,7 +74,7 @@ fun RefundPaymentScreen(
             if (response.succeeded) {
                 refundRef = response.refundReference
                 orderManager.markRefunded(order.id)
-                orderManager.recordRefund(order, response.refundReference)
+                orderManager.recordRefund(order, response.refundReference, refundPence)
                 state = RefundState.APPROVED
             } else {
                 errorMessage = response.failureReason ?: "Refund declined"
@@ -117,13 +127,19 @@ fun RefundPaymentScreen(
                 ) {
                     Text("Refund Amount", fontSize = 13.sp, color = Color.Gray)
                     Text(
-                        "£%.2f".format(order.amountPence / 100.0),
+                        if (state == RefundState.AMOUNT_ENTRY)
+                            "£%.2f".format(refundPence / 100.0)
+                        else
+                            "£%.2f".format(refundPence / 100.0),
                         fontSize = 48.sp,
                         fontWeight = FontWeight.Bold,
                         color = RefundColor
                     )
                     Text(
-                        order.orderReference,
+                        if (refundPence != order.amountPence)
+                            "${order.orderReference} · of £%.2f".format(order.amountPence / 100.0)
+                        else
+                            order.orderReference,
                         fontSize = 12.sp,
                         color = Color.Gray
                     )
@@ -144,6 +160,50 @@ fun RefundPaymentScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         when (state) {
+
+                            RefundState.AMOUNT_ENTRY -> {
+                                Text(
+                                    "Refund the full amount, or enter a smaller amount for a partial refund.",
+                                    fontSize = 13.sp,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(Modifier.height(16.dp))
+                                OutlinedTextField(
+                                    value = amountText,
+                                    onValueChange = { amountText = it; amountError = null },
+                                    label = { Text("Amount (£)") },
+                                    isError = amountError != null,
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                amountError?.let {
+                                    Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                                }
+                                Spacer(Modifier.height(16.dp))
+                                Button(
+                                    onClick = {
+                                        val pence = amountText.trim().toDoubleOrNull()
+                                            ?.let { Math.round(it * 100).toInt() }
+                                        when {
+                                            pence == null -> amountError = "Enter a valid amount"
+                                            pence <= 0 -> amountError = "Amount must be more than £0"
+                                            pence > order.amountPence ->
+                                                amountError = "Can't exceed £%.2f".format(order.amountPence / 100.0)
+                                            else -> {
+                                                refundPence = pence
+                                                state = RefundState.CONNECTING
+                                                startToken += 1
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = RefundColor)
+                                ) {
+                                    Text("Refund", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                                }
+                            }
 
                             RefundState.CONNECTING -> {
                                 CircularProgressIndicator(
