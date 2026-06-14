@@ -70,7 +70,7 @@ fun TerminalSettingsContent(
             val entries = listOf(
                 TerminalBackend.EMULATOR_BLE to "Emulator (BLE)",
                 TerminalBackend.EMULATOR_WIFI to "Emulator (Wi-Fi)",
-                TerminalBackend.VERIFONE to "Verifone"
+                TerminalBackend.VERIFONE to "Verifone (Wi-Fi)"
             )
             entries.forEachIndexed { index, (value, label) ->
                 SegmentedButton(

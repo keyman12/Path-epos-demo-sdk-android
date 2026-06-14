@@ -43,6 +43,13 @@ fun VoidPaymentScreen(
     var voidRef by remember { mutableStateOf<String?>(null) }
     val connectionState by terminalManager.connectionState.collectAsState()
 
+    val cancelAndDismiss = {
+        if (state == VoidState.CONNECTING || state == VoidState.PROCESSING) {
+            terminalManager.cancelCurrentOperation()
+        }
+        onDismiss()
+    }
+
     LaunchedEffect(Unit) {
         try {
             if (connectionState !is TerminalConnectionState.Connected) {
@@ -105,7 +112,7 @@ fun VoidPaymentScreen(
                         color = VoidColor
                     )
                     if (state != VoidState.APPROVED) {
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = cancelAndDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.Gray)
                         }
                     } else {

@@ -34,6 +34,8 @@ private enum class CardPaymentState {
     DECLINED,
     /** Customer walked away from the tip prompt — offer Try Again / Cancel. */
     CUSTOMER_TIMEOUT,
+    /** No card presented within the window — distinct from a decline. */
+    TIMED_OUT,
     ERROR
 }
 
@@ -120,6 +122,11 @@ fun CardPaymentScreen(
                     // Recoverable — don't record a declined sale; let the cashier retry.
                     state = CardPaymentState.CUSTOMER_TIMEOUT
                 }
+                response.timedOut -> {
+                    // No card was presented — NOT a decline. Don't record a
+                    // declined sale; just let the cashier close or retry.
+                    state = CardPaymentState.TIMED_OUT
+                }
                 else -> {
                     errorMessage = response.failureReason ?: "Card declined"
                     state = CardPaymentState.DECLINED
@@ -155,7 +162,8 @@ fun CardPaymentScreen(
         onDismissRequest = {
             if (state == CardPaymentState.APPROVED ||
                 state == CardPaymentState.ERROR ||
-                state == CardPaymentState.DECLINED) onDismiss()
+                state == CardPaymentState.DECLINED ||
+                state == CardPaymentState.TIMED_OUT) onDismiss()
         },
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
     ) {
@@ -376,6 +384,44 @@ fun CardPaymentScreen(
                                 Text(
                                     "The customer didn't pick a tip option in time. " +
                                         "You can try the sale again or cancel and return to the cart.",
+                                    fontSize = 13.sp,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(Modifier.height(20.dp))
+                                Button(
+                                    onClick = { attemptToken += 1 },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = OCGreen)
+                                ) {
+                                    Text("Try Again", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Cancel", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                                }
+                            }
+
+                            CardPaymentState.TIMED_OUT -> {
+                                Icon(
+                                    Icons.Default.HourglassEmpty,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(72.dp),
+                                    tint = Color(0xFFFF9800)
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    "No Card Presented",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "The card wasn't tapped in time. This is not a decline — " +
+                                        "you can try again or cancel.",
                                     fontSize = 13.sp,
                                     color = Color.Gray,
                                     textAlign = TextAlign.Center

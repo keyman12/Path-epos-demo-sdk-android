@@ -41,6 +41,7 @@ class AppTerminalManager(
             sdkVersion = "0.1.0",
             adapterVersion = "0.1.0"
         )
+        sdkManager.noteWireRequestId(envelope.requestId)
         val txnRequest = tech.path2ai.sdk.core.TransactionRequest.sale(
             amountMinor = request.amountPence,
             currency = request.currencyCode,
@@ -103,6 +104,14 @@ class AppTerminalManager(
                 totalAmountPence = base,
                 customerTimedOut = true
             )
+            tech.path2ai.sdk.core.TransactionState.TIMED_OUT -> TerminalSaleResponse(
+                authorised = false,
+                failureReason = "No card presented — timed out",
+                baseAmountPence = base,
+                tipAmountPence = 0,
+                totalAmountPence = base,
+                timedOut = true
+            )
             else -> TerminalSaleResponse(
                 authorised = false,
                 failureReason = result.error?.message ?: "Transaction ${result.state.value}",
@@ -119,6 +128,7 @@ class AppTerminalManager(
             sdkVersion = "0.1.0",
             adapterVersion = "0.1.0"
         )
+        sdkManager.noteWireRequestId(envelope.requestId)
         val txnRequest = tech.path2ai.sdk.core.TransactionRequest.refund(
             amountMinor = request.amountPence,
             currency = request.currencyCode,
@@ -145,6 +155,7 @@ class AppTerminalManager(
             sdkVersion = "0.1.0",
             adapterVersion = "0.1.0"
         )
+        sdkManager.noteWireRequestId(envelope.requestId)
         val txnRequest = tech.path2ai.sdk.core.TransactionRequest.voidTransaction(
             originalTransactionId = request.originalTerminalReference,
             envelope = envelope

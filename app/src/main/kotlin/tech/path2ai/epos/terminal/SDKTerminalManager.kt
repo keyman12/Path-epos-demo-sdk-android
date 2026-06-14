@@ -146,6 +146,14 @@ class SDKTerminalManager(
     private var _lastWireRequestId: String? = null
     override val lastWireRequestId: String? get() = _lastWireRequestId
 
+    /**
+     * Record the wire request id used by a UI-driven transaction (sale/refund/
+     * void via AppTerminalManager.submit*), so the Developer Diagnostics
+     * "Last req_id" + GetTransactionStatus reflect the normal till flow — not
+     * just the manual startSale/startRefund paths.
+     */
+    fun noteWireRequestId(id: String) { _lastWireRequestId = id }
+
     // ---- Init ----
 
     init {

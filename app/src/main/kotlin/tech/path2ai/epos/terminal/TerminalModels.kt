@@ -52,7 +52,14 @@ data class TerminalSaleResponse(
      * was CUSTOMER_TIMEOUT). The UI should offer Retry / Cancel, not the
      * usual "declined" flow.
      */
-    val customerTimedOut: Boolean = false
+    val customerTimedOut: Boolean = false,
+    /**
+     * True when no card was presented within the window (result state was
+     * TIMED_OUT). Distinct from a decline — the card was never read, so it
+     * should show as "timed out / no card", not "declined", and not be
+     * recorded as a declined sale.
+     */
+    val timedOut: Boolean = false
 )
 
 data class TerminalRefundRequest(

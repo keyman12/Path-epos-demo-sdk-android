@@ -47,6 +47,15 @@ fun RefundPaymentScreen(
     var startToken by remember { mutableStateOf(0) }
     val connectionState by terminalManager.connectionState.collectAsState()
 
+    // Closing mid-refund must tell the terminal to cancel, or the emulator
+    // sits waiting for the card until its own timeout (same as the sale flow).
+    val cancelAndDismiss = {
+        if (state == RefundState.CONNECTING || state == RefundState.PROCESSING) {
+            terminalManager.cancelCurrentOperation()
+        }
+        onDismiss()
+    }
+
     LaunchedEffect(startToken) {
         if (startToken == 0) return@LaunchedEffect  // still on the amount-entry step
         try {
@@ -112,7 +121,7 @@ fun RefundPaymentScreen(
                         color = RefundColor
                     )
                     if (state != RefundState.APPROVED) {
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = cancelAndDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.Gray)
                         }
                     } else {
