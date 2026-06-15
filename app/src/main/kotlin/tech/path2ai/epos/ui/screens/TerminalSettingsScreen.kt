@@ -98,6 +98,8 @@ fun TerminalSettingsContent(
                 label = { Text("Emulator IP (shown on its welcome screen)") },
                 placeholder = { Text("192.168.1.xx") },
                 singleLine = true,
+                // Lock the host once connected — change it via Disconnect first.
+                enabled = connectionState !is TerminalConnectionState.Connected,
                 modifier = Modifier.fillMaxWidth()
             )
             Text(
@@ -105,7 +107,11 @@ fun TerminalSettingsContent(
                 style = MaterialTheme.typography.bodySmall, color = Color.Gray
             )
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { terminalManager.applyHostAndConnect() }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { terminalManager.applyHostAndConnect() },
+                enabled = connectionState !is TerminalConnectionState.Connected,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("Apply & Connect")
             }
         }
@@ -118,6 +124,8 @@ fun TerminalSettingsContent(
                 },
                 label = { Text("Terminal IP") },
                 singleLine = true,
+                // Lock the host once connected — change it via Disconnect first.
+                enabled = connectionState !is TerminalConnectionState.Connected,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
@@ -136,7 +144,11 @@ fun TerminalSettingsContent(
                 style = MaterialTheme.typography.bodySmall, color = Color.Gray
             )
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { terminalManager.applyHostAndConnect() }, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { terminalManager.applyHostAndConnect() },
+                enabled = connectionState !is TerminalConnectionState.Connected,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Text("Apply & Connect")
             }
         }
