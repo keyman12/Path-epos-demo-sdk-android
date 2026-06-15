@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -96,8 +97,9 @@ fun OrderHistoryContent(
                     val isLoadingReceipt = loadingReceiptForId == order.id
 
                     Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
                         Row(
-                            modifier = Modifier.padding(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // ── Order info ────────────────────────────────────
@@ -105,7 +107,7 @@ fun OrderHistoryContent(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(order.orderReference, fontWeight = FontWeight.Medium)
                                     Spacer(Modifier.width(8.dp))
-                                    StatusBadge(order.status, order.orderType)
+                                    StatusBadge(order)
                                 }
                                 Text(
                                     dateFormat.format(Date(order.date)),
@@ -242,6 +244,10 @@ fun OrderHistoryContent(
                                 }
                             }
                         }
+                            if (order.orderType == OrderType.SALE && order.refundedLineIndices.isNotEmpty()) {
+                                RefundedItemsBreakdown(order)
+                            }
+                        }
                     }
                 }
             }
@@ -318,14 +324,16 @@ fun OrderHistoryScreen(
 }
 
 @Composable
-private fun StatusBadge(status: OrderStatus, orderType: OrderType) {
+private fun StatusBadge(order: CompletedOrder) {
     val (text, color) = when {
-        orderType == OrderType.REFUND -> "REFUND" to Color(0xFF9C27B0)
-        orderType == OrderType.VOID -> "VOID" to Color(0xFFD97706)
-        status == OrderStatus.COMPLETED -> "COMPLETED" to OCGreen
-        status == OrderStatus.DECLINED -> "DECLINED" to OCRed
-        status == OrderStatus.REFUNDED -> "REFUNDED" to Color(0xFFFF9800)
-        status == OrderStatus.VOIDED -> "VOIDED" to Color(0xFF6B7280)
+        order.orderType == OrderType.REFUND -> "REFUND" to Color(0xFF9C27B0)
+        order.orderType == OrderType.VOID -> "VOID" to Color(0xFFD97706)
+        // Partially item-refunded sales stay COMPLETED, so check this first.
+        order.isPartiallyRefunded -> "PART REFUNDED" to Color(0xFFFF9800)
+        order.status == OrderStatus.COMPLETED -> "COMPLETED" to OCGreen
+        order.status == OrderStatus.DECLINED -> "DECLINED" to OCRed
+        order.status == OrderStatus.REFUNDED -> "REFUNDED" to Color(0xFFFF9800)
+        order.status == OrderStatus.VOIDED -> "VOIDED" to Color(0xFF6B7280)
         else -> "" to Color.Gray
     }
     if (text.isNotEmpty()) {
@@ -340,6 +348,41 @@ private fun StatusBadge(status: OrderStatus, orderType: OrderType) {
                 fontWeight = FontWeight.Bold,
                 color = color
             )
+        }
+    }
+}
+
+/**
+ * Item breakdown shown under a sale that has had item-level refunds — the
+ * refunded lines struck through, the remaining ones still live. Lets the
+ * cashier see at a glance what's been returned and what's still refundable.
+ */
+@Composable
+private fun RefundedItemsBreakdown(order: CompletedOrder) {
+    Spacer(Modifier.height(8.dp))
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp)) {
+        order.lineItems.forEachIndexed { index, item ->
+            val refunded = index in order.refundedLineIndices
+            val decoration = if (refunded) TextDecoration.LineThrough else TextDecoration.None
+            val color = if (refunded) Color.Gray else MaterialTheme.colorScheme.onSurface
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "${item.quantity} × ${item.name}",
+                    fontSize = 12.sp,
+                    color = color,
+                    textDecoration = decoration
+                )
+                Text(
+                    "£%.2f".format(item.lineTotal / 100.0),
+                    fontSize = 12.sp,
+                    color = color,
+                    textDecoration = decoration
+                )
+            }
         }
     }
 }

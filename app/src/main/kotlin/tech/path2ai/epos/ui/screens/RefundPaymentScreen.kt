@@ -1,8 +1,10 @@
 package tech.path2ai.epos.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -11,8 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -20,13 +22,17 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.flow.first
 import tech.path2ai.epos.managers.OrderManager
 import tech.path2ai.epos.models.CompletedOrder
+import tech.path2ai.epos.models.OrderLineItem
 import tech.path2ai.epos.terminal.*
 import tech.path2ai.epos.ui.theme.OCGreen
 
-private enum class RefundState { AMOUNT_ENTRY, CONNECTING, PROCESSING, APPROVED, FAILED, ERROR }
+private enum class RefundState { ITEM_SELECTION, CONNECTING, PROCESSING, APPROVED, FAILED, ERROR }
 
 // Refund accent colour — purple, distinct from green (sale) and red (error)
 private val RefundColor = Color(0xFF7C3AED)
+
+// "Already refunded" tag colour, matching the order-history REFUNDED badge.
+private val RefundedTagColor = Color(0xFFFF9800)
 
 @Composable
 fun RefundPaymentScreen(
@@ -35,17 +41,29 @@ fun RefundPaymentScreen(
     orderManager: OrderManager,
     onDismiss: () -> Unit
 ) {
-    // Start on the amount-entry step so the cashier can do a partial refund.
-    var state by remember { mutableStateOf(RefundState.AMOUNT_ENTRY) }
+    // Start on item selection: the cashier picks which lines from the original
+    // sale to refund. The refund value is the sum of the selected lines.
+    var state by remember { mutableStateOf(RefundState.ITEM_SELECTION) }
     var errorMessage by remember { mutableStateOf("") }
     var refundRef by remember { mutableStateOf<String?>(null) }
-    // Editable refund amount (pounds), defaulting to the full original total.
-    var amountText by remember { mutableStateOf("%.2f".format(order.amountPence / 100.0)) }
-    var amountError by remember { mutableStateOf<String?>(null) }
-    var refundPence by remember { mutableStateOf(order.amountPence) }
-    // Bumped when the cashier confirms the amount — keys the LaunchedEffect.
+    // Line indices (into order.lineItems) the cashier has ticked for this refund.
+    var selectedIndices by remember { mutableStateOf(setOf<Int>()) }
+    // Captured at confirm time so the terminal call + recording are stable.
+    var refundPence by remember { mutableStateOf(0) }
+    var refundTipPence by remember { mutableStateOf(0) }
+    // Bumped when the cashier confirms — keys the LaunchedEffect.
     var startToken by remember { mutableStateOf(0) }
     val connectionState by terminalManager.connectionState.collectAsState()
+
+    // Live totals, recomputed as the selection changes.
+    val unrefunded = order.unrefundedLineIndices
+    val selectedValue = selectedIndices.sumOf { order.lineItems.getOrNull(it)?.lineTotal ?: 0 }
+    // Clearing refund = this pass selects every remaining line, so the whole sale
+    // is now refunded. Only then do we also return the customer's tip, so the sum
+    // of all partial refunds reconciles to the original total.
+    val isClearingRefund = selectedIndices.isNotEmpty() && unrefunded.all { it in selectedIndices }
+    val tipToRefund = if (isClearingRefund) (order.tipAmountPence ?: 0) else 0
+    val liveRefundPence = selectedValue + tipToRefund
 
     // Closing mid-refund must tell the terminal to cancel, or the emulator
     // sits waiting for the card until its own timeout (same as the sale flow).
@@ -57,7 +75,7 @@ fun RefundPaymentScreen(
     }
 
     LaunchedEffect(startToken) {
-        if (startToken == 0) return@LaunchedEffect  // still on the amount-entry step
+        if (startToken == 0) return@LaunchedEffect  // still on the item-selection step
         try {
             if (connectionState !is TerminalConnectionState.Connected) {
                 state = RefundState.CONNECTING
@@ -82,8 +100,12 @@ fun RefundPaymentScreen(
             val response = terminalManager.submitRefund(request)
             if (response.succeeded) {
                 refundRef = response.refundReference
-                orderManager.markRefunded(order.id)
-                orderManager.recordRefund(order, response.refundReference, refundPence)
+                orderManager.recordItemRefund(
+                    originalOrder = order,
+                    refundReference = response.refundReference,
+                    refundedIndices = selectedIndices.toList().sorted(),
+                    tipRefundPence = refundTipPence
+                )
                 state = RefundState.APPROVED
             } else {
                 errorMessage = response.failureReason ?: "Refund declined"
@@ -135,20 +157,15 @@ fun RefundPaymentScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text("Refund Amount", fontSize = 13.sp, color = Color.Gray)
+                    val headerPence = if (state == RefundState.ITEM_SELECTION) liveRefundPence else refundPence
                     Text(
-                        if (state == RefundState.AMOUNT_ENTRY)
-                            "£%.2f".format(refundPence / 100.0)
-                        else
-                            "£%.2f".format(refundPence / 100.0),
+                        "£%.2f".format(headerPence / 100.0),
                         fontSize = 48.sp,
                         fontWeight = FontWeight.Bold,
                         color = RefundColor
                     )
                     Text(
-                        if (refundPence != order.amountPence)
-                            "${order.orderReference} · of £%.2f".format(order.amountPence / 100.0)
-                        else
-                            order.orderReference,
+                        order.orderReference,
                         fontSize = 12.sp,
                         color = Color.Gray
                     )
@@ -170,47 +187,64 @@ fun RefundPaymentScreen(
                     ) {
                         when (state) {
 
-                            RefundState.AMOUNT_ENTRY -> {
+                            RefundState.ITEM_SELECTION -> {
                                 Text(
-                                    "Refund the full amount, or enter a smaller amount for a partial refund.",
+                                    "Select the items to refund.",
                                     fontSize = 13.sp,
                                     color = Color.Gray,
                                     textAlign = TextAlign.Center
                                 )
-                                Spacer(Modifier.height(16.dp))
-                                OutlinedTextField(
-                                    value = amountText,
-                                    onValueChange = { amountText = it; amountError = null },
-                                    label = { Text("Amount (£)") },
-                                    isError = amountError != null,
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                amountError?.let {
-                                    Text(it, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                                Spacer(Modifier.height(12.dp))
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 260.dp)
+                                        .verticalScroll(rememberScrollState())
+                                ) {
+                                    order.lineItems.forEachIndexed { index, item ->
+                                        RefundItemRow(
+                                            item = item,
+                                            alreadyRefunded = index in order.refundedLineIndices,
+                                            selected = index in selectedIndices,
+                                            onToggle = {
+                                                selectedIndices =
+                                                    if (index in selectedIndices) selectedIndices - index
+                                                    else selectedIndices + index
+                                            }
+                                        )
+                                    }
+                                }
+                                if (tipToRefund > 0) {
+                                    Spacer(Modifier.height(10.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Tip (final refund)", fontSize = 13.sp, color = Color.Gray)
+                                        Text(
+                                            "£%.2f".format(tipToRefund / 100.0),
+                                            fontSize = 13.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
                                 }
                                 Spacer(Modifier.height(16.dp))
                                 Button(
                                     onClick = {
-                                        val pence = amountText.trim().toDoubleOrNull()
-                                            ?.let { Math.round(it * 100).toInt() }
-                                        when {
-                                            pence == null -> amountError = "Enter a valid amount"
-                                            pence <= 0 -> amountError = "Amount must be more than £0"
-                                            pence > order.amountPence ->
-                                                amountError = "Can't exceed £%.2f".format(order.amountPence / 100.0)
-                                            else -> {
-                                                refundPence = pence
-                                                state = RefundState.CONNECTING
-                                                startToken += 1
-                                            }
-                                        }
+                                        refundPence = liveRefundPence
+                                        refundTipPence = tipToRefund
+                                        state = RefundState.CONNECTING
+                                        startToken += 1
                                     },
+                                    enabled = selectedIndices.isNotEmpty(),
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(containerColor = RefundColor)
                                 ) {
-                                    Text("Refund", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                                    Text(
+                                        "Refund £%.2f".format(liveRefundPence / 100.0),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 16.sp
+                                    )
                                 }
                             }
 
@@ -355,5 +389,67 @@ fun RefundPaymentScreen(
                 Spacer(Modifier.height(20.dp))
             }
         }
+    }
+}
+
+/**
+ * One selectable line in the refund picker. Already-refunded lines are struck
+ * through, greyed and locked (you can't refund the same line twice).
+ */
+@Composable
+private fun RefundItemRow(
+    item: OrderLineItem,
+    alreadyRefunded: Boolean,
+    selected: Boolean,
+    onToggle: () -> Unit
+) {
+    val decoration = if (alreadyRefunded) TextDecoration.LineThrough else TextDecoration.None
+    val textColor = if (alreadyRefunded) Color.Gray else MaterialTheme.colorScheme.onSurface
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (alreadyRefunded) Modifier else Modifier.clickable { onToggle() })
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = selected && !alreadyRefunded,
+            onCheckedChange = if (alreadyRefunded) null else { _ -> onToggle() },
+            enabled = !alreadyRefunded,
+            colors = CheckboxDefaults.colors(checkedColor = RefundColor)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                item.name,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = textColor,
+                textDecoration = decoration
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "%d × £%.2f".format(item.quantity, item.unitPrice / 100.0),
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    textDecoration = decoration
+                )
+                if (alreadyRefunded) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "Refunded",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = RefundedTagColor
+                    )
+                }
+            }
+        }
+        Text(
+            "£%.2f".format(item.lineTotal / 100.0),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = textColor,
+            textDecoration = decoration
+        )
     }
 }

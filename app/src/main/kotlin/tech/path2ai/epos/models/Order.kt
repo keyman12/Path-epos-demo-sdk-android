@@ -45,7 +45,14 @@ data class CompletedOrder(
      */
     val baseAmountPence: Int? = null,
     /** Customer-added tip, minor units. Null or 0 = no tip. */
-    val tipAmountPence: Int? = null
+    val tipAmountPence: Int? = null,
+    /**
+     * Indices into [lineItems] already refunded, for whole-line item refunds.
+     * Grows as the cashier refunds more lines over multiple sittings; when every
+     * line is covered the sale flips to [OrderStatus.REFUNDED]. Always empty on
+     * non-sale orders and on sales that were never item-refunded.
+     */
+    val refundedLineIndices: List<Int> = emptyList()
 ) {
     val formattedAmount: String
         get() = "£%.2f".format(amountPence / 100.0)
@@ -53,16 +60,32 @@ data class CompletedOrder(
     val cardDisplay: String?
         get() = if (cardScheme != null && cardLastFour != null) "$cardScheme ****$cardLastFour" else null
 
+    /** Line items not yet refunded (whole-line granularity). */
+    val unrefundedLineIndices: List<Int>
+        get() = lineItems.indices.filter { it !in refundedLineIndices }
+
+    /** Some — but not all — lines refunded. The sale stays COMPLETED meanwhile. */
+    val isPartiallyRefunded: Boolean
+        get() = orderType == OrderType.SALE &&
+                refundedLineIndices.isNotEmpty() &&
+                refundedLineIndices.size < lineItems.size
+
+    /** Value (minor units) of the lines already refunded. */
+    val refundedLineValuePence: Int
+        get() = refundedLineIndices.mapNotNull { lineItems.getOrNull(it)?.lineTotal }.sum()
+
     val canRefund: Boolean
-        get() = status == OrderStatus.COMPLETED && orderType == OrderType.SALE && terminalReference != null
+        get() = status == OrderStatus.COMPLETED && orderType == OrderType.SALE &&
+                terminalReference != null && unrefundedLineIndices.isNotEmpty()
 
     /**
      * Void = full reversal of an approved sale (no amount, no card tap).
-     * Same gate as [canRefund] — a completed card sale with a terminal
-     * reference to link to.
+     * A completed card sale with a terminal reference — but only before any
+     * item has been refunded (a part-refunded sale can no longer be voided).
      */
     val canVoid: Boolean
-        get() = status == OrderStatus.COMPLETED && orderType == OrderType.SALE && terminalReference != null
+        get() = status == OrderStatus.COMPLETED && orderType == OrderType.SALE &&
+                terminalReference != null && refundedLineIndices.isEmpty()
 
     /** True when this order carries a non-zero customer tip. */
     val hasTip: Boolean
