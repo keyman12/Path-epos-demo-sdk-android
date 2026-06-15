@@ -105,8 +105,8 @@ fun TerminalSettingsContent(
                 style = MaterialTheme.typography.bodySmall, color = Color.Gray
             )
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { terminalManager.applyBackend() }, modifier = Modifier.fillMaxWidth()) {
-                Text("Apply host")
+            OutlinedButton(onClick = { terminalManager.applyHostAndConnect() }, modifier = Modifier.fillMaxWidth()) {
+                Text("Apply & Connect")
             }
         }
         if (backend == TerminalBackend.VERIFONE) {
@@ -136,8 +136,8 @@ fun TerminalSettingsContent(
                 style = MaterialTheme.typography.bodySmall, color = Color.Gray
             )
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { terminalManager.applyBackend() }, modifier = Modifier.fillMaxWidth()) {
-                Text("Apply settings")
+            OutlinedButton(onClick = { terminalManager.applyHostAndConnect() }, modifier = Modifier.fillMaxWidth()) {
+                Text("Apply & Connect")
             }
         }
 
@@ -226,6 +226,9 @@ fun TerminalSettingsContent(
             Spacer(Modifier.height(16.dp))
         }
 
+        // Scan + device-list UI is only meaningful for BLE. For Wi-Fi/Verifone you've typed the
+        // host and connect with "Apply & Connect" above, so hide all of this there.
+        if (needsBle) {
         Text(
             when (backend) {
                 TerminalBackend.EMULATOR_BLE -> "Path POS Emulator"
@@ -284,6 +287,7 @@ fun TerminalSettingsContent(
                 modifier = Modifier.padding(vertical = 8.dp)
             )
         }
+        }  // end if (needsBle) — BLE-only scan / device-list UI
 
         if (connectionState is TerminalConnectionState.Connected) {
             Spacer(Modifier.height(8.dp))

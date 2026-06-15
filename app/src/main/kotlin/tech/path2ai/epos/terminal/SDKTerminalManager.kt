@@ -90,6 +90,42 @@ class SDKTerminalManager(
         log("Backend ready: ${integrationKind}")
     }
 
+    /**
+     * Apply the typed host AND connect, in one step. For the IP-based backends
+     * (Emulator Wi-Fi / Verifone) there's nothing to "scan" — you typed the
+     * address — so this rebuilds the adapter with the saved host and connects
+     * straight to the single TCP endpoint. A wrong/unreachable host surfaces as
+     * Unavailable + a log line, instead of the button looking dead.
+     */
+    fun applyHostAndConnect() {
+        applyBackend()                 // rebuild the adapter with the saved host; resets state
+        val t = terminal
+        _isScanning.value = false      // no BLE-style "scanning" for a typed-in host
+        _connectionState.value = TerminalConnectionState.Connecting
+        log("Connecting to ${integrationKind}...")
+        scope.launch {
+            try {
+                // Connect straight to the single TCP endpoint — don't surface it as a
+                // "discovered device" (that produced a redundant card on the settings screen).
+                val device = t.discoverDevices().firstOrNull()
+                if (device == null) {
+                    _connectionState.value = TerminalConnectionState.Unavailable("No terminal at that address")
+                    log("No terminal found at the configured host")
+                    return@launch
+                }
+                t.connect(device)
+                _connectionState.value = TerminalConnectionState.Connected
+                isReady = true
+                lastAckTime = System.currentTimeMillis()
+                log("Connected to ${device.name}.")
+            } catch (e: Exception) {
+                _lastError.value = e.message
+                _connectionState.value = TerminalConnectionState.Unavailable(e.message ?: "Connect failed")
+                log("Connect failed: ${e.message}")
+            }
+        }
+    }
+
     private var currentSaleJob: Job? = null
     private var currentRefundJob: Job? = null
     private var currentVoidJob: Job? = null
@@ -207,6 +243,10 @@ class SDKTerminalManager(
     }
 
     private fun mapConnectionState(conn: ConnectionState) {
+        // Scanning is the ONLY state that drives the spinner; every other event clears it.
+        // (The TCP connect path emits Scanning then Connected — without this the spinner stuck
+        // on after "Terminal Connected", because nothing reset isScanning.)
+        _isScanning.value = (conn == ConnectionState.Scanning)
         when (conn) {
             ConnectionState.Idle -> {
                 if (terminal.isConnected) {
@@ -218,7 +258,6 @@ class SDKTerminalManager(
                 }
             }
             ConnectionState.Scanning -> {
-                _isScanning.value = true
                 if (terminal.isConnected) isReady = true
             }
             ConnectionState.Connecting -> {

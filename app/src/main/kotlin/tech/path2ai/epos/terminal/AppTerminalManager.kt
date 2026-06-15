@@ -34,6 +34,9 @@ class AppTerminalManager(
         sdkManager.startScan()
     }
 
+    /** Apply the typed host and connect in one tap (Wi-Fi / Verifone — no scan needed). */
+    fun applyHostAndConnect() = sdkManager.applyHostAndConnect()
+
     /** Bridge: calls the Path SDK directly for a sale transaction. */
     suspend fun submitSale(request: TerminalSaleRequest): TerminalSaleResponse {
         val envelope = tech.path2ai.sdk.core.RequestEnvelope.create(
