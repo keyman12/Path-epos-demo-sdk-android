@@ -115,6 +115,14 @@ class AppTerminalManager(
                 totalAmountPence = base,
                 timedOut = true
             )
+            tech.path2ai.sdk.core.TransactionState.FAILED -> TerminalSaleResponse(
+                authorised = false,
+                failureReason = result.error?.message ?: "Transaction could not be completed",
+                baseAmountPence = base,
+                tipAmountPence = tip,
+                totalAmountPence = total,
+                notCompleted = true
+            )
             else -> TerminalSaleResponse(
                 authorised = false,
                 failureReason = result.error?.message ?: "Transaction ${result.state.value}",

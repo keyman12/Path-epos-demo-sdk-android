@@ -59,7 +59,16 @@ data class TerminalSaleResponse(
      * should show as "timed out / no card", not "declined", and not be
      * recorded as a declined sale.
      */
-    val timedOut: Boolean = false
+    val timedOut: Boolean = false,
+    /**
+     * True when the terminal couldn't complete the transaction for a reason
+     * that is NOT a card decline — e.g. the transaction type isn't supported /
+     * provisioned on the terminal (PSDK status -24 / "T807"), such as a tip
+     * sale on a terminal without tipping enabled. Should show as a neutral
+     * "couldn't complete" with the reason — not a decline — and must not be
+     * recorded as a declined sale.
+     */
+    val notCompleted: Boolean = false
 )
 
 data class TerminalRefundRequest(

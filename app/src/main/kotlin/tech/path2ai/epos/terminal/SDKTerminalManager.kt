@@ -52,16 +52,27 @@ class SDKTerminalManager(
             sdkVersion = "0.1.1",
             adapterVersion = "0.1.1",
             deviceNameFilter = null,
+            // Same terminal-login credentials as the real backend — the emulator
+            // performs the same connect-time login handshake (protocol v1.3).
+            username = TerminalBackendSettings.loginUsername(context),
+            password = TerminalBackendSettings.loginPassword(context),
+            shift = TerminalBackendSettings.loginShift(context),
             onLog = { msg -> scope.launch { log(msg) } }
         )
         TerminalBackend.EMULATOR_WIFI -> TcpPathTerminalAdapter(
             host = TerminalBackendSettings.emulatorHost(context),
+            username = TerminalBackendSettings.loginUsername(context),
+            password = TerminalBackendSettings.loginPassword(context),
+            shift = TerminalBackendSettings.loginShift(context),
             onLog = { msg -> scope.launch { log(msg) } }
         )
         TerminalBackend.VERIFONE -> VerifonePSDKAdapter(
             context = context,
             config = VerifoneTerminalConfig(
                 host = TerminalBackendSettings.verifoneHost(context),
+                username = TerminalBackendSettings.loginUsername(context),
+                password = TerminalBackendSettings.loginPassword(context),
+                shift = TerminalBackendSettings.loginShift(context),
                 refundPassword = TerminalBackendSettings.refundPassword(context)
             ),
             onLog = { msg -> scope.launch { log(msg) } }

@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import android.content.Context
@@ -59,6 +61,10 @@ fun TerminalSettingsContent(
     var backend by remember { mutableStateOf(TerminalBackendSettings.backend(context)) }
     var emulatorHost by remember { mutableStateOf(TerminalBackendSettings.emulatorHost(context)) }
     var verifoneHost by remember { mutableStateOf(TerminalBackendSettings.verifoneHost(context)) }
+    var loginUsername by remember { mutableStateOf(TerminalBackendSettings.loginUsername(context)) }
+    var loginPassword by remember { mutableStateOf(TerminalBackendSettings.loginPassword(context)) }
+    var loginShift by remember { mutableStateOf(TerminalBackendSettings.loginShift(context)) }
+    var loginPasswordVisible by remember { mutableStateOf(false) }
     var refundPassword by remember { mutableStateOf(TerminalBackendSettings.refundPassword(context)) }
     val needsBle = backend == TerminalBackend.EMULATOR_BLE
 
@@ -87,6 +93,57 @@ fun TerminalSettingsContent(
             }
         }
         Spacer(Modifier.height(8.dp))
+
+        // ── Terminal login (shared across all backends) ──────────────────
+        // Every backend performs a connect-time login; the emulator is a
+        // faithful stand-in for the real terminal. Locked while connected.
+        Text("Terminal login", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = loginUsername,
+            onValueChange = {
+                loginUsername = it
+                TerminalBackendSettings.setLoginUsername(context, it)
+            },
+            label = { Text("Login username") },
+            singleLine = true,
+            enabled = connectionState !is TerminalConnectionState.Connected,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = loginPassword,
+            onValueChange = {
+                loginPassword = it
+                TerminalBackendSettings.setLoginPassword(context, it)
+            },
+            label = { Text("Login password") },
+            singleLine = true,
+            visualTransformation = if (loginPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { loginPasswordVisible = !loginPasswordVisible }) {
+                    Icon(
+                        imageVector = if (loginPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (loginPasswordVisible) "Hide password" else "Show password"
+                    )
+                }
+            },
+            enabled = connectionState !is TerminalConnectionState.Connected,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = loginShift,
+            onValueChange = {
+                loginShift = it
+                TerminalBackendSettings.setLoginShift(context, it)
+            },
+            label = { Text("Login shift") },
+            singleLine = true,
+            enabled = connectionState !is TerminalConnectionState.Connected,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(12.dp))
 
         if (backend == TerminalBackend.EMULATOR_WIFI) {
             OutlinedTextField(

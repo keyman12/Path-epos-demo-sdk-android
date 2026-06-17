@@ -127,6 +127,14 @@ fun CardPaymentScreen(
                     // declined sale; just let the cashier close or retry.
                     state = CardPaymentState.TIMED_OUT
                 }
+                response.notCompleted -> {
+                    // Terminal couldn't run the transaction (e.g. tipping not
+                    // enabled on this terminal — T807). Not a decline: show the
+                    // reason and don't record a declined sale.
+                    errorMessage = response.failureReason
+                        ?: "The terminal couldn't complete this transaction."
+                    state = CardPaymentState.ERROR
+                }
                 else -> {
                     errorMessage = response.failureReason ?: "Card declined"
                     state = CardPaymentState.DECLINED
