@@ -42,6 +42,14 @@ interface TerminalConnectionManager {
      */
     fun applyBackend()
 
+    /**
+     * Push the current customer-display branding (a merchant logo shown on
+     * connect and re-shown between transactions) to the connected terminal — or
+     * clear it when disabled. Reads [CustomerDisplaySettings]. Safe to call any
+     * time; a no-op on backends without a customer display (the emulator).
+     */
+    fun applyCustomerDisplayBranding()
+
     // ---- Payments ----
 
     fun startSale(amountMinor: Int, currency: String, tipMinor: Int? = null)

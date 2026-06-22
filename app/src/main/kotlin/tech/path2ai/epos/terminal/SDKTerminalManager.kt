@@ -101,6 +101,27 @@ class SDKTerminalManager(
         log("Backend ready: ${integrationKind}")
     }
 
+    override fun applyCustomerDisplayBranding() {
+        val t = terminal
+        scope.launch {
+            try {
+                val content = if (CustomerDisplaySettings.isEnabled(context)) {
+                    CustomerDisplayContent(
+                        imageBytes = CustomerDisplaySettings.logoBytes(context),
+                        caption = CustomerDisplaySettings.caption(context).ifBlank { null }
+                    )
+                } else null
+                t.setIdleBranding(content)
+                log(
+                    if (content != null) "Customer display: logo applied (attract mode on)"
+                    else "Customer display: branding cleared"
+                )
+            } catch (e: Exception) {
+                log("Customer display: failed to apply branding — ${e.message}")
+            }
+        }
+    }
+
     /**
      * Apply the typed host AND connect, in one step. For the IP-based backends
      * (Emulator Wi-Fi / Verifone) there's nothing to "scan" — you typed the
@@ -129,6 +150,8 @@ class SDKTerminalManager(
                 isReady = true
                 lastAckTime = System.currentTimeMillis()
                 log("Connected to ${device.name}.")
+                // Paint the merchant logo on the customer screen (attract mode).
+                applyCustomerDisplayBranding()
             } catch (e: Exception) {
                 _lastError.value = e.message
                 _connectionState.value = TerminalConnectionState.Unavailable(e.message ?: "Connect failed")
@@ -444,6 +467,7 @@ class SDKTerminalManager(
                     lastAckTime = System.currentTimeMillis()
                     log("Connected (attempt $attempt).")
                     prefs.edit().putString(KEY_LAST_DEVICE_ID, device.id).apply()
+                    applyCustomerDisplayBranding()
                     return@launch
                 } catch (e: Exception) {
                     lastError = e
