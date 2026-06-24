@@ -99,6 +99,49 @@ data class TerminalVoidResponse(
     val failureReason: String? = null
 )
 
+/**
+ * Pre-authorization: place a hold on the card (funds reserved, not debited),
+ * then adjust / complete (capture) / void (release) it later. The
+ * [TerminalPreAuthResponse.terminalReference] returned by the initial hold is
+ * the handle the EPOS stores and replays for every follow-on.
+ */
+data class TerminalPreAuthRequest(
+    val amountPence: Int,
+    val currencyCode: String,
+    val orderReference: String
+)
+
+data class TerminalPreAuthResponse(
+    val succeeded: Boolean,
+    /** Handle for adjust / complete / void; store this against the order/tab. */
+    val terminalReference: String? = null,
+    /** The current reserved/held total after this operation, in minor units. */
+    val holdAmountPence: Int = 0,
+    val failureReason: String? = null
+)
+
+/** Adjust a hold to a NEW TOTAL (not a delta): higher = increase, lower = decrease. */
+data class TerminalPreAuthAdjustRequest(
+    val originalTerminalReference: String,
+    val newTotalPence: Int,
+    val currencyCode: String,
+    val orderReference: String
+)
+
+/** Capture (debit) a held pre-auth and close it. [amountPence] may be <= the hold. */
+data class TerminalPreAuthCompleteRequest(
+    val originalTerminalReference: String,
+    val amountPence: Int,
+    val currencyCode: String,
+    val orderReference: String
+)
+
+/** Release a held pre-auth without debiting. */
+data class TerminalPreAuthVoidRequest(
+    val originalTerminalReference: String,
+    val orderReference: String
+)
+
 data class TerminalTransactionStatus(
     val reference: String,
     val state: String,

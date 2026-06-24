@@ -117,6 +117,14 @@ fun OrderHistoryContent(
                                 order.cardDisplay?.let {
                                     Text(it, fontSize = 12.sp, color = Color.Gray)
                                 }
+                                order.tabName?.let { tabName ->
+                                    Text(
+                                        "Tab: $tabName" + (order.settlementKind?.let { " · $it" } ?: ""),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = OCGreen
+                                    )
+                                }
                             }
 
                             // ── Amount + action buttons ───────────────────────
@@ -282,6 +290,8 @@ private fun buildHistoryReceipt(
         total = total,
         currency = order.currencyCode,
         cardReceiptBlock = cardBlock,
+        transactionTypeLabel = order.settlementKind,
+        tabName = order.tabName,
         tipAmount = tip
     )
 }

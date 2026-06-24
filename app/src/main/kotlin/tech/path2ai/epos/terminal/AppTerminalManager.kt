@@ -184,6 +184,100 @@ class AppTerminalManager(
         }
     }
 
+    // ── Pre-authorization bridge ─────────────────────────────────────────────
+
+    private fun newEnvelope(orderRef: String?) = tech.path2ai.sdk.core.RequestEnvelope.create(
+        merchantReference = orderRef,
+        sdkVersion = "0.1.0",
+        adapterVersion = "0.1.0"
+    ).also { sdkManager.noteWireRequestId(it.requestId) }
+
+    /** Bridge: place a pre-auth hold (card tap). */
+    suspend fun submitPreAuth(request: TerminalPreAuthRequest): TerminalPreAuthResponse {
+        val envelope = newEnvelope(request.orderReference)
+        val txnRequest = tech.path2ai.sdk.core.TransactionRequest.preAuth(
+            amountMinor = request.amountPence,
+            currency = request.currencyCode,
+            envelope = envelope
+        )
+        val result = sdkManager.terminal.preAuth(txnRequest)
+        return if (result.state == tech.path2ai.sdk.core.TransactionState.PREAUTH_HELD) {
+            TerminalPreAuthResponse(
+                succeeded = true,
+                terminalReference = result.transactionId,
+                holdAmountPence = result.amountMinor
+            )
+        } else {
+            TerminalPreAuthResponse(
+                succeeded = false,
+                failureReason = result.error?.message ?: "Pre-auth ${result.state.value}"
+            )
+        }
+    }
+
+    /** Bridge: adjust a hold to a new total (host-only, no card). */
+    suspend fun submitAdjustPreAuth(request: TerminalPreAuthAdjustRequest): TerminalPreAuthResponse {
+        val envelope = newEnvelope(request.orderReference)
+        val txnRequest = tech.path2ai.sdk.core.TransactionRequest.adjustPreAuth(
+            newTotalMinor = request.newTotalPence,
+            originalTransactionId = request.originalTerminalReference,
+            currency = request.currencyCode,
+            envelope = envelope
+        )
+        val result = sdkManager.terminal.adjustPreAuth(txnRequest)
+        return if (result.state == tech.path2ai.sdk.core.TransactionState.PREAUTH_HELD) {
+            TerminalPreAuthResponse(
+                succeeded = true,
+                terminalReference = request.originalTerminalReference,
+                holdAmountPence = result.amountMinor
+            )
+        } else {
+            TerminalPreAuthResponse(
+                succeeded = false,
+                terminalReference = request.originalTerminalReference,
+                failureReason = result.error?.message ?: "Adjust ${result.state.value}"
+            )
+        }
+    }
+
+    /** Bridge: capture (complete) a held pre-auth. */
+    suspend fun submitCompletePreAuth(request: TerminalPreAuthCompleteRequest): TerminalPreAuthResponse {
+        val envelope = newEnvelope(request.orderReference)
+        val txnRequest = tech.path2ai.sdk.core.TransactionRequest.completePreAuth(
+            amountMinor = request.amountPence,
+            originalTransactionId = request.originalTerminalReference,
+            currency = request.currencyCode,
+            envelope = envelope
+        )
+        val result = sdkManager.terminal.completePreAuth(txnRequest)
+        return if (result.state == tech.path2ai.sdk.core.TransactionState.CAPTURED) {
+            TerminalPreAuthResponse(succeeded = true, terminalReference = result.transactionId)
+        } else {
+            TerminalPreAuthResponse(
+                succeeded = false,
+                failureReason = result.error?.message ?: "Complete ${result.state.value}"
+            )
+        }
+    }
+
+    /** Bridge: void (release) a held pre-auth. */
+    suspend fun submitVoidPreAuth(request: TerminalPreAuthVoidRequest): TerminalPreAuthResponse {
+        val envelope = newEnvelope(request.orderReference)
+        val txnRequest = tech.path2ai.sdk.core.TransactionRequest.voidPreAuth(
+            originalTransactionId = request.originalTerminalReference,
+            envelope = envelope
+        )
+        val result = sdkManager.terminal.voidPreAuth(txnRequest)
+        return if (result.state == tech.path2ai.sdk.core.TransactionState.REVERSED) {
+            TerminalPreAuthResponse(succeeded = true, terminalReference = result.transactionId)
+        } else {
+            TerminalPreAuthResponse(
+                succeeded = false,
+                failureReason = result.error?.message ?: "Void ${result.state.value}"
+            )
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         // ViewModel is being destroyed; disconnect cleanly

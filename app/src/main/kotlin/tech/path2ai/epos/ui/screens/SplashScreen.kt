@@ -17,12 +17,14 @@ import kotlinx.coroutines.delay
 import tech.path2ai.epos.R
 import tech.path2ai.epos.managers.InventoryManager
 import tech.path2ai.epos.managers.OrderManager
+import tech.path2ai.epos.managers.TabManager
 import tech.path2ai.epos.terminal.AppTerminalManager
 
 @Composable
 fun SplashScreen(
     terminalManager: AppTerminalManager,
     orderManager: OrderManager,
+    tabManager: TabManager,
     inventoryManager: InventoryManager
 ) {
     var showSplash by remember { mutableStateOf(true) }
@@ -65,6 +67,7 @@ fun SplashScreen(
         AppNavigation(
             terminalManager = terminalManager,
             orderManager = orderManager,
+            tabManager = tabManager,
             inventoryManager = inventoryManager
         )
     }

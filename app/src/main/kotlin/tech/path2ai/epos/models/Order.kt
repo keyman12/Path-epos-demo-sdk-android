@@ -46,6 +46,14 @@ data class CompletedOrder(
     val baseAmountPence: Int? = null,
     /** Customer-added tip, minor units. Null or 0 = no tip. */
     val tipAmountPence: Int? = null,
+    /** When this order settled a bar/café tab, the tab's customer name. */
+    val tabName: String? = null,
+    /**
+     * How a tab was settled, for the receipt/history: "Pre-auth completion"
+     * (captured within the hold) or "Sale (over hold)" (hold voided + fresh
+     * sale). Null for ordinary sales.
+     */
+    val settlementKind: String? = null,
     /**
      * Indices into [lineItems] already refunded, for whole-line item refunds.
      * Grows as the cashier refunds more lines over multiple sittings; when every

@@ -492,6 +492,13 @@ fun ReceiptContent(
                 Text(receipt.cashierName, fontSize = 11.sp, color = OCGreen.copy(alpha = 0.8f))
             }
             Text(receipt.orderDate, fontSize = 11.sp, color = Color.Gray)
+            // Tab / pre-auth context — shows this settled a tab and how.
+            receipt.tabName?.let {
+                Text("Tab: $it", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = OCGreen)
+            }
+            receipt.transactionTypeLabel?.let {
+                Text(it.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = OCGreen.copy(alpha = 0.9f))
+            }
         }
 
         ReceiptDivider()

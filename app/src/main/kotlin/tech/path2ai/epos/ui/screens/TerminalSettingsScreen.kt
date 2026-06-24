@@ -407,6 +407,48 @@ fun TerminalSettingsContent(
                         }
                     )
                 }
+                var allowPreAuth by remember {
+                    mutableStateOf(PaymentSettings.isPreAuthAllowed(context))
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Allow pre-authorization", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Offers Pre-auth (hold a card, adjust, then complete or void). " +
+                                "Mirrors the terminal's Merchant.PreAuthEnabled gate.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
+                    Switch(
+                        checked = allowPreAuth,
+                        onCheckedChange = {
+                            allowPreAuth = it
+                            PaymentSettings.setPreAuthAllowed(context, it)
+                        }
+                    )
+                }
+                if (allowPreAuth) {
+                    var tabCapText by remember {
+                        mutableStateOf("%.2f".format(PaymentSettings.tabCapPence(context) / 100.0))
+                    }
+                    OutlinedTextField(
+                        value = tabCapText,
+                        onValueChange = { v ->
+                            tabCapText = v
+                            v.toDoubleOrNull()?.let {
+                                PaymentSettings.setTabCapPence(context, Math.round(it * 100).toInt())
+                            }
+                        },
+                        label = { Text("Tab limit (£)") },
+                        supportingText = { Text("Max a tab can accrue before more items are blocked.") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
 

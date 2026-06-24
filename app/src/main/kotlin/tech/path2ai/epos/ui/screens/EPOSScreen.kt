@@ -21,12 +21,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import tech.path2ai.epos.managers.InventoryManager
 import tech.path2ai.epos.managers.OrderManager
+import tech.path2ai.epos.managers.TabManager
 import tech.path2ai.epos.models.*
 import tech.path2ai.epos.terminal.*
 import tech.path2ai.epos.ui.theme.*
@@ -35,8 +37,10 @@ import tech.path2ai.epos.ui.theme.*
 fun EPOSScreen(
     terminalManager: AppTerminalManager,
     orderManager: OrderManager,
+    tabManager: TabManager,
     inventoryManager: InventoryManager,
-    onNavigateToSettings: () -> Unit
+    onNavigateToSettings: () -> Unit,
+    onNavigateToTabs: () -> Unit = {}
 ) {
     var cartItems by remember { mutableStateOf(listOf<CartItem>()) }
     var selectedCategory by remember { mutableStateOf("All") }
@@ -96,6 +100,11 @@ fun EPOSScreen(
                     )
                     Spacer(Modifier.width(8.dp))
 
+                    if (PaymentSettings.isPreAuthAllowed(LocalContext.current)) {
+                        IconButton(onClick = onNavigateToTabs) {
+                            Icon(Icons.Default.Receipt, contentDescription = "Tabs")
+                        }
+                    }
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -233,6 +242,7 @@ fun EPOSScreen(
             total = cartTotal,
             terminalManager = terminalManager,
             orderManager = orderManager,
+            tabManager = tabManager,
             onDismiss = { showPaymentSheet = false },
             onPaymentComplete = {
                 cartItems = emptyList()
