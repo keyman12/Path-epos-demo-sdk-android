@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import tech.path2ai.epos.BuildConfig
 import tech.path2ai.epos.managers.OrderManager
 import tech.path2ai.epos.terminal.AppTerminalManager
 import tech.path2ai.epos.terminal.TerminalConnectionState
@@ -225,7 +226,7 @@ private fun AboutDetailContent(
         ListItem(
             headlineContent = { Text("Version") },
             leadingContent = { Icon(Icons.Default.NewReleases, contentDescription = null) },
-            trailingContent = { Text("1.0.0", color = Color.Gray, fontSize = 13.sp) }
+            trailingContent = { Text(BuildConfig.VERSION_NAME, color = Color.Gray, fontSize = 13.sp) }
         )
         ListItem(
             headlineContent = { Text("Terminal Layer") },

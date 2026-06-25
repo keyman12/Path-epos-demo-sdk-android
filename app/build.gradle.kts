@@ -38,6 +38,10 @@ android {
         // The Verifone PSDK aar was built with data binding — the consuming
         // APP must enable it or its generated classes fail to resolve.
         dataBinding = true
+        // Generates BuildConfig.VERSION_NAME from versionName above — the single
+        // source of truth the About screen reads, so the displayed version can
+        // never drift from the build. See CHANGELOG.md for the bump convention.
+        buildConfig = true
     }
 }
 
